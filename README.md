@@ -1,5 +1,3 @@
-.
-
 # 🧠 Pokémon Personality Recommender
 
 # 🐾 寶可夢人格推薦系統
