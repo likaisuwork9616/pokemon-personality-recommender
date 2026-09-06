@@ -251,10 +251,19 @@ class FakeReindexService:
         )
 
 
+class RefreshingEngine:
+    def __init__(self) -> None:
+        self.refresh_calls = 0
+
+    def refresh_profiles(self):
+        self.refresh_calls += 1
+
+
 class AdminApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repository = FakeAdminRepository()
         self.reindex_service = FakeReindexService()
+        self.runtime_engine = RefreshingEngine()
         self.auth = AdminAuth(
             AdminAuthConfig(
                 password="portfolio-admin-password",
@@ -263,7 +272,10 @@ class AdminApiTests(unittest.TestCase):
             ),
             clock=lambda: 1_700_000_000,
         )
-        self.application = create_app(lambda: object(), admin_auth=self.auth)
+        self.application = create_app(
+            lambda: self.runtime_engine,
+            admin_auth=self.auth,
+        )
         self.application.dependency_overrides[get_admin_repository] = (
             lambda: self.repository
         )
@@ -367,6 +379,7 @@ class AdminApiTests(unittest.TestCase):
         )
         self.assertTrue(restored.json()["is_active"])
         self.assertEqual(self.repository.session.commits, 4)
+        self.assertEqual(self.runtime_engine.refresh_calls, 4)
 
     def test_database_conflict_rolls_back_and_returns_409(self):
         csrf, _set_cookie = self.login()
@@ -425,6 +438,7 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(rebuilt.json()["embedded"], 1)
         self.assertEqual(self.reindex_service.calls, 1)
         self.assertEqual(self.reindex_service.repository.session.commits, 1)
+        self.assertEqual(self.runtime_engine.refresh_calls, 1)
 
     def test_admin_page_and_openapi_are_exposed(self):
         page = self.client.get("/admin")

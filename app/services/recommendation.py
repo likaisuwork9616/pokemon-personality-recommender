@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from threading import Lock
 from typing import Any, Callable
 
@@ -34,6 +35,7 @@ class HybridRecommendationEngine:
         embedding_model_id: int,
         retrieval_service_factory: Callable[[Any], Any] | None = None,
         explanation_service: GroundedExplanationService | None = None,
+        profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -46,14 +48,43 @@ class HybridRecommendationEngine:
         )
         self.explanation_service = explanation_service or GroundedExplanationService()
         self._encode_lock = Lock()
+        self._profile_refresh_lock = Lock()
+        self._profile_records_loader = profile_records_loader
 
+        database_ids = self._database_id_map(profile_engine)
+        self._profile_state = (profile_engine, database_ids)
+
+    @staticmethod
+    def _database_id_map(profile_engine: Any) -> dict[int, int]:
         database_ids: dict[int, int] = {}
         for row_index, value in enumerate(profile_engine.df["_database_id"].tolist()):
             database_id = int(value)
             if database_id in database_ids:
                 raise ValueError(f"duplicate PostgreSQL Pokémon ID: {database_id}")
             database_ids[database_id] = row_index
-        self._row_index_by_database_id = database_ids
+        return database_ids
+
+    def refresh_profiles(self) -> int:
+        """Atomically replace the in-memory personality snapshot from PostgreSQL."""
+
+        if self._profile_records_loader is None:
+            raise RuntimeError("profile refresh is not configured")
+        with self._profile_refresh_lock:
+            records = self._profile_records_loader()
+            if len(records) < 3:
+                raise RuntimeError("profile refresh returned fewer than three Pokémon")
+            import pandas as pd
+
+            current, _current_ids = self._profile_state
+            refreshed = copy(current)
+            refreshed.df = pd.DataFrame.from_records(records).fillna("")
+            refreshed._validate_columns()
+            refreshed.persona_vectors = refreshed.build_persona_vectors()
+            refreshed.pokemon_embeddings = np.zeros((len(records), 384), dtype=float)
+            database_ids = self._database_id_map(refreshed)
+            self.profile_engine = refreshed
+            self._profile_state = (refreshed, database_ids)
+            return len(records)
 
     def recommend(self, user_text: str, top_k: int = 3) -> list[dict[str, Any]]:
         text = str(user_text).strip()
@@ -61,12 +92,13 @@ class HybridRecommendationEngine:
             raise ValueError("使用者輸入不可為空。")
         if not 1 <= top_k <= 10:
             raise ValueError("top_k 必須介於 1 到 10。")
+        profile_engine, row_index_by_database_id = self._profile_state
 
         # SentenceTransformer/tokenizer inference is process-local and may not be
         # safe under concurrent request threads. Only the encode call is locked.
         try:
             with self._encode_lock:
-                encoded = self.profile_engine.st_model.encode(
+                encoded = profile_engine.st_model.encode(
                     text,
                     normalize_embeddings=True,
                 )
@@ -94,8 +126,23 @@ class HybridRecommendationEngine:
                 "hybrid retrieval is temporarily unavailable"
             ) from None
 
+        if (
+            self._profile_records_loader is not None
+            and any(
+                candidate.pokemon_id not in row_index_by_database_id
+                for candidate in candidates
+            )
+        ):
+            try:
+                self.refresh_profiles()
+                profile_engine, row_index_by_database_id = self._profile_state
+            except Exception:
+                raise RetrievalUnavailableError(
+                    "runtime Pokémon profile snapshot is stale"
+                ) from None
+
         try:
-            user_persona = self.profile_engine.text_to_persona_vector(text)
+            user_persona = profile_engine.text_to_persona_vector(text)
         except Exception:
             raise RetrievalUnavailableError(
                 "personality scoring is temporarily unavailable"
@@ -111,21 +158,21 @@ class HybridRecommendationEngine:
                     "hybrid index returned duplicate Pokémon candidates"
                 )
             seen_candidate_ids.add(candidate.pokemon_id)
-            row_index = self._row_index_by_database_id.get(candidate.pokemon_id)
+            row_index = row_index_by_database_id.get(candidate.pokemon_id)
             if row_index is None:
                 raise RetrievalUnavailableError(
                     "runtime Pokémon profile snapshot is stale"
                 )
-            row = self.profile_engine.df.iloc[row_index]
-            pokemon_persona = self.profile_engine.persona_vectors[row_index]
+            row = profile_engine.df.iloc[row_index]
+            pokemon_persona = profile_engine.persona_vectors[row_index]
             personality = float(
                 np.clip(cosine_similarity([user_persona], [pokemon_persona])[0][0], 0, 1)
             )
             semantic = float(np.clip(candidate.retrieval_score / max_rrf_score, 0, 1))
             total = float(np.clip(alpha * personality + (1.0 - alpha) * semantic, 0, 1))
-            pokemon_traits = self.profile_engine.get_top_traits(pokemon_persona)
+            pokemon_traits = profile_engine.get_top_traits(pokemon_persona)
 
-            pokedex_value = row[self.profile_engine.id_col]
+            pokedex_value = row[profile_engine.id_col]
             pokedex_number = (
                 int(pokedex_value)
                 if str(pokedex_value).isdigit()
@@ -134,26 +181,26 @@ class HybridRecommendationEngine:
             result = {
                 "database_id": candidate.pokemon_id,
                 "pokedex_number": pokedex_number,
-                "name": self.profile_engine.safe_get(row, self.profile_engine.name_col),
-                "name_en": self.profile_engine.safe_get(row, self.profile_engine.name_en_col),
-                "type": self.profile_engine.safe_get(row, self.profile_engine.type_col),
+                "name": profile_engine.safe_get(row, profile_engine.name_col),
+                "name_en": profile_engine.safe_get(row, profile_engine.name_en_col),
+                "type": profile_engine.safe_get(row, profile_engine.type_col),
                 "type_en": ", ".join(
                     [
-                        str(self.profile_engine.safe_get(row, self.profile_engine.type_1_col)),
-                        str(self.profile_engine.safe_get(row, self.profile_engine.type_2_col)),
+                        str(profile_engine.safe_get(row, profile_engine.type_1_col)),
+                        str(profile_engine.safe_get(row, profile_engine.type_2_col)),
                     ]
                 ).strip(", "),
-                "category": self.profile_engine.safe_get(row, self.profile_engine.cat_col),
-                "genus": self.profile_engine.safe_get(row, self.profile_engine.genus_col),
-                "desc": self.profile_engine.safe_get(row, self.profile_engine.desc_col),
-                "flavor_text_en": self.profile_engine.safe_get(
-                    row, self.profile_engine.flavor_en_col
+                "category": profile_engine.safe_get(row, profile_engine.cat_col),
+                "genus": profile_engine.safe_get(row, profile_engine.genus_col),
+                "desc": profile_engine.safe_get(row, profile_engine.desc_col),
+                "flavor_text_en": profile_engine.safe_get(
+                    row, profile_engine.flavor_en_col
                 ),
-                "analysis_text": self.profile_engine.safe_get(
-                    row, self.profile_engine.analysis_col
+                "analysis_text": profile_engine.safe_get(
+                    row, profile_engine.analysis_col
                 ),
-                "img": self.profile_engine.safe_get(row, self.profile_engine.img_col)
-                or self.profile_engine.safe_get(row, self.profile_engine.sprite_col),
+                "img": profile_engine.safe_get(row, profile_engine.img_col)
+                or profile_engine.safe_get(row, profile_engine.sprite_col),
                 "scores": {
                     "semantic": round(semantic, 8),
                     "personality": round(personality, 8),
@@ -186,7 +233,7 @@ class HybridRecommendationEngine:
                     }
                     for evidence in candidate.evidence
                 ],
-                "user_traits": self.profile_engine.get_top_traits(user_persona),
+                "user_traits": profile_engine.get_top_traits(user_persona),
                 "pokemon_traits": pokemon_traits,
             }
             ranked.append(

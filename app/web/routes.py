@@ -13,6 +13,17 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 router = APIRouter(include_in_schema=False)
 
 
+@router.get("/", response_class=HTMLResponse, name="pokemon_recommendation")
+async def recommendation_page(request: Request) -> HTMLResponse:
+    """Render the privacy-conscious Top 3 recommendation experience."""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="recommendation.html",
+        context={"page_title": "寶可夢人格推薦"},
+    )
+
+
 @router.get("/admin", response_class=HTMLResponse, name="pokemon_admin")
 async def admin_page(request: Request) -> HTMLResponse:
     """Render the same-origin administrator shell without exposing secrets."""
