@@ -5,20 +5,19 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
     Pokemon,
     PokemonDescription,
     PokemonImage,
-    PokemonKnowledgeChunk,
-    PokemonKnowledgeDocument,
     PokemonStats,
     PokemonType,
     Type,
 )
 from app.schemas.admin import AdminPokemonCreate, AdminPokemonUpdate
+from app.repositories.reindex import PokemonReindexRepository
 from app.services.knowledge import content_hash
 
 
@@ -209,7 +208,7 @@ class AdminPokemonRepository:
         for key, item in existing.items():
             if key not in desired_keys:
                 changed_sources.add(item.source_key.removeprefix("csv:"))
-                self.session.delete(item)
+                pokemon.descriptions.remove(item)
 
         for payload in payloads:
             key = (
@@ -239,7 +238,11 @@ class AdminPokemonRepository:
             item.is_primary = payload.is_primary
 
         if changed_sources and pokemon.id is not None:
-            self._mark_knowledge_stale(pokemon.id, changed_sources)
+            self.session.flush()
+            PokemonReindexRepository(self.session).stage_description_sources(
+                pokemon,
+                changed_sources,
+            )
 
     def _sync_images(self, pokemon: Pokemon, payloads: list) -> None:
         existing = {item.image_kind: item for item in pokemon.images}
@@ -264,27 +267,3 @@ class AdminPokemonRepository:
                 continue
             item.image_url = str(payload.image_url)
             item.is_primary = payload.is_primary
-
-    def _mark_knowledge_stale(
-        self,
-        pokemon_id: int,
-        source_keys: set[str],
-    ) -> None:
-        document_ids = select(PokemonKnowledgeDocument.id).where(
-            PokemonKnowledgeDocument.pokemon_id == pokemon_id,
-            PokemonKnowledgeDocument.source_key.in_(source_keys),
-            PokemonKnowledgeDocument.is_current.is_(True),
-        )
-        self.session.execute(
-            update(PokemonKnowledgeChunk)
-            .where(
-                PokemonKnowledgeChunk.document_id.in_(document_ids),
-                PokemonKnowledgeChunk.is_current.is_(True),
-            )
-            .values(is_current=False, status="stale")
-        )
-        self.session.execute(
-            update(PokemonKnowledgeDocument)
-            .where(PokemonKnowledgeDocument.id.in_(document_ids))
-            .values(is_current=False, status="stale", updated_at=func.now())
-        )

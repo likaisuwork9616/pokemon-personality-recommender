@@ -506,6 +506,52 @@ button:disabled {
   accent-color: var(--accent);
 }
 
+.index-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.8rem 1rem;
+  padding: 1rem;
+  background: rgba(5, 15, 27, 0.52);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.index-panel[hidden] {
+  display: none;
+}
+
+.index-panel h3,
+.index-panel p {
+  margin: 0;
+}
+
+.index-source-list {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.index-source-list li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) auto;
+  gap: 0.25rem 1rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(60, 91, 126, 0.42);
+}
+
+.index-source-list span,
+.index-source-list small {
+  color: var(--muted);
+}
+
+.index-source-list small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
 .button-quiet:hover {
   color: var(--text);
   background: var(--surface-soft);

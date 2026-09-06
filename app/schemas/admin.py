@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Literal, Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
@@ -44,7 +45,11 @@ def _validate_child_uniqueness(
             raise ValueError("type_codes must be unique")
     if descriptions is not None:
         description_keys = [
-            (item.language_code, item.description_kind, item.source_key)
+            (
+                item.language_code,
+                item.description_kind,
+                item.source_key.removeprefix("csv:"),
+            )
             for item in descriptions
         ]
         if len(set(description_keys)) != len(description_keys):
@@ -241,3 +246,33 @@ class AdminPokemonPage(BaseModel):
 
 class AdminPokemonDetail(PokemonDetail):
     is_active: bool
+
+
+IndexStatus = Literal["ready", "stale", "failed", "unindexed"]
+
+
+class AdminIndexSourceStatus(BaseModel):
+    source_key: str
+    status: IndexStatus
+    current_document_id: UUID | None = None
+    current_version: int | None = Field(default=None, ge=1)
+    staged_document_id: UUID | None = None
+    staged_version: int | None = Field(default=None, ge=1)
+    total_chunks: int = Field(ge=0)
+    ready_chunks: int = Field(ge=0)
+    last_error: str | None = None
+
+
+class AdminIndexStatus(BaseModel):
+    pokemon_id: int
+    status: IndexStatus
+    sources: list[AdminIndexSourceStatus]
+
+
+class AdminReindexResponse(BaseModel):
+    pokemon_id: int
+    embedding_model_id: int
+    discovered: int = Field(ge=0)
+    embedded: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    index: AdminIndexStatus

@@ -53,6 +53,43 @@ def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, value))
 
 
+def build_source_document(
+    *,
+    pokemon_key: str,
+    source_key: str,
+    document_kind: str,
+    language: str,
+    content: str,
+    version: int,
+) -> KnowledgeDocument:
+    """Build one deterministic immutable document from an editable source."""
+
+    normalized_content = content.strip()
+    if not pokemon_key.strip() or not source_key.strip():
+        raise ValueError("pokemon_key and source_key must not be blank")
+    if not document_kind.strip() or not language.strip() or not normalized_content:
+        raise ValueError("document metadata and content must not be blank")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise ValueError("version must be a positive integer")
+    digest = content_hash(normalized_content)
+    return KnowledgeDocument(
+        document_id=_stable_id(
+            "document",
+            pokemon_key,
+            source_key,
+            version,
+            digest,
+        ),
+        pokemon_key=pokemon_key,
+        source_key=source_key,
+        document_kind=document_kind,
+        language=language,
+        content=normalized_content,
+        content_hash=digest,
+        version=version,
+    )
+
+
 def build_knowledge_documents(
     record: Mapping[str, object],
     *,
@@ -87,22 +124,13 @@ def build_knowledge_documents(
         version = version_by_source.get(source_key, 1)
         if isinstance(version, bool) or not isinstance(version, int) or version < 1:
             raise ValueError(f"version for {source_key!r} must be a positive integer")
-        digest = content_hash(content)
         documents.append(
-            KnowledgeDocument(
-                document_id=_stable_id(
-                    "document",
-                    pokemon_key,
-                    source_key,
-                    version,
-                    digest,
-                ),
+            build_source_document(
                 pokemon_key=pokemon_key,
                 source_key=source_key,
                 document_kind=document_kind,
                 language=language,
                 content=content,
-                content_hash=digest,
                 version=version,
             )
         )

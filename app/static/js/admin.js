@@ -90,6 +90,42 @@
   const primaryImage = (images) =>
     images.find((item) => item.is_primary) || images[0] || null;
 
+  const renderIndexStatus = (data) => {
+    const labels = {
+      ready: "可用",
+      stale: "等待重建",
+      failed: "重建失敗，可重試",
+      unindexed: "尚未建立",
+    };
+    byId("admin-index-panel").hidden = false;
+    byId("admin-index-summary").textContent = `整體狀態：${labels[data.status] || data.status}`;
+    const rows = data.sources.map((source) => {
+      const item = document.createElement("li");
+      const name = document.createElement("strong");
+      const status = document.createElement("span");
+      name.textContent = source.source_key;
+      status.textContent = `${labels[source.status] || source.status} · ${source.ready_chunks}/${source.total_chunks} chunks`;
+      item.append(name, status);
+      if (source.last_error) {
+        const error = document.createElement("small");
+        error.textContent = source.last_error;
+        item.append(error);
+      }
+      return item;
+    });
+    const list = byId("admin-index-sources");
+    list.replaceChildren(...rows);
+    if (!rows.length) list.textContent = "目前沒有可建立索引的敘述。";
+  };
+
+  const loadIndexStatus = async (pokemonId) => {
+    try {
+      renderIndexStatus(await api(`/pokemon/${pokemonId}/index-status`));
+    } catch (error) {
+      byId("admin-index-summary").textContent = error.message;
+    }
+  };
+
   const loadDetail = async (pokemonId) => {
     try {
       const data = await api(`/pokemon/${pokemonId}`);
@@ -116,6 +152,7 @@
       toggle.classList.toggle("button-danger", data.is_active);
       toggle.classList.toggle("button-success", !data.is_active);
       setStatus(`已載入 ${data.name_zh}。`);
+      await loadIndexStatus(data.id);
     } catch (error) {
       setStatus(error.message, true);
     }
@@ -128,6 +165,7 @@
     byId("admin-form-key").value = "default";
     byId("admin-editor-title").textContent = "新增資料";
     byId("admin-toggle-active").hidden = true;
+    byId("admin-index-panel").hidden = true;
   };
 
   const normalizedTypes = () =>
@@ -239,6 +277,27 @@
       await loadDetail(updated.id);
     } catch (error) {
       setStatus(error.message, true);
+    }
+  });
+
+  byId("admin-reindex").addEventListener("click", async () => {
+    if (!state.selected) return;
+    const button = byId("admin-reindex");
+    button.disabled = true;
+    setStatus("正在重新建立 embedding，請稍候……");
+    try {
+      const result = await api(`/pokemon/${state.selected.id}/reindex`, { method: "POST" });
+      renderIndexStatus(result.index);
+      setStatus(
+        result.failed
+          ? `重建完成，但有 ${result.failed} 個 chunk 失敗；可再次重試。`
+          : `索引已更新，共建立 ${result.embedded} 個 embedding。`,
+        result.failed > 0,
+      );
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      button.disabled = false;
     }
   });
 
