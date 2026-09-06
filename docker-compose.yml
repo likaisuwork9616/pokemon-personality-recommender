@@ -33,11 +33,17 @@ services:
       - "8000"
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
+      HF_HOME: /models/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
       PYTHONUNBUFFERED: "1"
+    volumes:
+      - model_cache:/models
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
-      seed:
+      embed:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -79,5 +85,26 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  embed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - scripts/rebuild_embeddings.py
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+      EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
+      HF_HOME: /models/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - model_cache:/models
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    restart: "no"
+
 volumes:
   postgres_data:
+  model_cache:

@@ -145,17 +145,22 @@ class PokemonRecommender:
     5. 回傳最符合的寶可夢
     """
 
-    def __init__(self, path: str = FILE_PATH, dataframe: pd.DataFrame | None = None):
+    def __init__(
+        self,
+        path: str = FILE_PATH,
+        dataframe: pd.DataFrame | None = None,
+        pokemon_embeddings: np.ndarray | None = None,
+    ):
         """
         函式用途：
         初始化推薦系統，只在程式啟動時跑一次。
         """
 
         if dataframe is None:
-            print("🚀 載入寶可夢資料：", path)
+            print("Loading Pokemon data:", path)
             self.df = pd.read_csv(path, encoding="utf-8").fillna("")
         else:
-            print("🚀 從 PostgreSQL 載入寶可夢資料")
+            print("Loading Pokemon data from PostgreSQL")
             self.df = dataframe.copy().fillna("")
 
         # 新版 pokedex_final.csv 欄位名稱
@@ -175,16 +180,26 @@ class PokemonRecommender:
 
         self._validate_columns()
 
-        print("🧠 載入語意模型：", EMBEDDING_MODEL)
+        print("Loading semantic model:", EMBEDDING_MODEL)
         self.st_model = self._load_sentence_model()
 
-        print("🧬 建立寶可夢人格向量...")
+        print("Building Pokemon personality vectors...")
         self.persona_vectors = self.build_persona_vectors()
 
-        print("⚡ 建立寶可夢中英語意向量...")
-        self.pokemon_embeddings = self.build_embeddings()
+        if pokemon_embeddings is None:
+            print("Building Pokemon semantic vectors...")
+            self.pokemon_embeddings = self.build_embeddings()
+        else:
+            supplied = np.asarray(pokemon_embeddings, dtype=float)
+            if supplied.shape != (len(self.df), 384):
+                raise ValueError(
+                    "PostgreSQL embeddings must have shape "
+                    f"({len(self.df)}, 384), got {supplied.shape}"
+                )
+            print("Using semantic vectors loaded from PostgreSQL pgvector")
+            self.pokemon_embeddings = supplied
 
-        print("✅ 推薦系統準備完成！")
+        print("Pokemon recommender is ready")
 
     def _validate_columns(self) -> None:
         """

@@ -11,17 +11,31 @@ from app.web.routes import router as web_router
 EngineFactory = Callable[[], Any]
 
 def _default_engine_factory() -> Any:
+    import numpy as np
     import pandas as pd
 
     from app.db.session import get_session_factory
-    from app.repositories import PokemonRepository
+    from app.repositories import PokemonRepository, VectorRepository
     from pokedex_online import PokemonRecommender
 
     with get_session_factory()() as session:
         records = PokemonRepository(session).recommender_records()
+        stored_vectors = VectorRepository(session).active_pokemon_embeddings()
     if not records:
         raise RuntimeError("PostgreSQL 尚無寶可夢資料，請先執行 scripts/import_pokemon.py")
-    return PokemonRecommender(dataframe=pd.DataFrame.from_records(records))
+    missing = [record["_database_id"] for record in records if record["_database_id"] not in stored_vectors]
+    if missing:
+        raise RuntimeError(f"仍有 {len(missing)} 隻寶可夢缺少 pgvector embeddings")
+    matrix = []
+    for record in records:
+        vectors = np.asarray(stored_vectors[int(record["_database_id"])], dtype=float)
+        mean = vectors.mean(axis=0)
+        norm = np.linalg.norm(mean)
+        matrix.append(mean / norm if norm else mean)
+    return PokemonRecommender(
+        dataframe=pd.DataFrame.from_records(records),
+        pokemon_embeddings=np.asarray(matrix),
+    )
 
 def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
     factory = engine_factory or _default_engine_factory

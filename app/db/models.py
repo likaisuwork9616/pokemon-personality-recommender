@@ -28,6 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import TSVECTOR
+from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
@@ -578,3 +579,132 @@ class PokemonKnowledgeChunk(Base):
     )
 
     document: Mapped[PokemonKnowledgeDocument] = relationship(back_populates="chunks")
+    embeddings: Mapped[list[PokemonChunkEmbedding]] = relationship(
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class EmbeddingModel(Base):
+    """Versioned encoder metadata for reproducible chunk vectors."""
+
+    __tablename__ = "embedding_models"
+    __table_args__ = (
+        UniqueConstraint(
+            "model_name",
+            "model_version",
+            name="uq_embedding_model_identity",
+        ),
+        CheckConstraint("length(trim(model_name)) > 0", name="model_name_not_blank"),
+        CheckConstraint(
+            "length(trim(model_version)) > 0",
+            name="model_version_not_blank",
+        ),
+        CheckConstraint("dimensions = 384", name="dimensions_384"),
+        Index(
+            "uq_embedding_models_single_active",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        SmallInteger,
+        Identity(always=True),
+        primary_key=True,
+    )
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    dimensions: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+        default=384,
+        server_default=text("384"),
+    )
+    normalize_embeddings: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    chunk_embeddings: Mapped[list[PokemonChunkEmbedding]] = relationship(
+        back_populates="embedding_model",
+        passive_deletes=True,
+    )
+
+
+class PokemonChunkEmbedding(Base):
+    """A 384-dimensional vector tied to one immutable chunk and model."""
+
+    __tablename__ = "pokemon_chunk_embeddings"
+    __table_args__ = (
+        CheckConstraint("length(content_hash) = 64", name="content_hash_length"),
+        CheckConstraint(
+            "status IN ('ready', 'stale', 'failed')",
+            name="status_valid",
+        ),
+        CheckConstraint(
+            "status <> 'ready' OR (embedding IS NOT NULL AND embedded_at IS NOT NULL)",
+            name="ready_has_vector",
+        ),
+        Index(
+            "ix_chunk_embeddings_model_status",
+            "embedding_model_id",
+            "status",
+            "chunk_id",
+        ),
+    )
+
+    chunk_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "pokemon_knowledge_chunks.id",
+            name="fk_chunk_embedding_chunk",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    embedding_model_id: Mapped[int] = mapped_column(
+        SmallInteger,
+        ForeignKey(
+            "embedding_models.id",
+            name="fk_chunk_embedding_model",
+            ondelete="RESTRICT",
+        ),
+        primary_key=True,
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ready",
+        server_default=text("'ready'"),
+    )
+    last_error: Mapped[str | None] = mapped_column(Text)
+    embedded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    chunk: Mapped[PokemonKnowledgeChunk] = relationship(back_populates="embeddings")
+    embedding_model: Mapped[EmbeddingModel] = relationship(
+        back_populates="chunk_embeddings"
+    )

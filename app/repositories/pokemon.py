@@ -176,6 +176,7 @@ class PokemonRepository:
             images = {item.image_kind: item.image_url for item in pokemon.images}
             stats = pokemon.stats
             record: dict[str, object] = {
+                "_database_id": pokemon.id,
                 "pokedex_number": pokemon.pokedex_number,
                 "name_zh": pokemon.name_zh,
                 "name_en": pokemon.name_en,
