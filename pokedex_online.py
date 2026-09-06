@@ -580,8 +580,10 @@ class PokemonRecommender:
             if not explanation:
                 raise RuntimeError("OpenAI API 未回傳文字內容。")
             return explanation
-        except Exception as e:
-            return f"{self.explain_offline(user_text, pokemon)}\n\n⚠️ OpenAI 解釋暫時失敗：{e}"
+        except Exception:
+            # Provider errors can contain request payloads. Keep the fallback
+            # grounded in local data and never surface or log the exception.
+            return self.explain_offline(user_text, pokemon)
 
 
 def main() -> None:

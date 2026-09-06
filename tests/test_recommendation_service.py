@@ -204,6 +204,23 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertNotIn("database details", str(caught.exception))
         self.assertTrue(sessions[0].closed)
 
+    def test_personality_error_does_not_include_the_raw_query(self):
+        engine, profile, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)]
+        )
+
+        def fail(text):
+            raise RuntimeError(f"failed while processing {text}")
+
+        profile.text_to_persona_vector = fail
+        with self.assertRaisesRegex(
+            RetrievalUnavailableError,
+            "personality scoring is temporarily unavailable",
+        ) as caught:
+            engine.recommend("安靜守護夥伴")
+
+        self.assertNotIn("安靜守護夥伴", str(caught.exception))
+
     def test_duplicate_candidates_are_rejected_at_engine_boundary(self):
         duplicate = _candidate(1, 0.03)
         engine, _profile, _sessions, _retriever = self._engine(
