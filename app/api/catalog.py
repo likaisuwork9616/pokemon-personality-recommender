@@ -118,6 +118,7 @@ def pokemon_detail(
                 source_key=item.source_key,
                 content=item.content,
                 content_hash=item.content_hash,
+                is_primary=item.is_primary,
             )
             for item in sorted(
                 pokemon.descriptions,

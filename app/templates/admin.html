@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="管理寶可夢圖鑑資料、啟用狀態與檢索來源。">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/admin.js" defer></script>
+</head>
+<body data-page="admin">
+  <a class="skip-link" href="#admin-main">跳到管理內容</a>
+  <header class="site-header">
+    <a class="brand" href="/pokemon" aria-label="寶可夢圖鑑首頁">
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <span><strong>POKÉDEX</strong><small>管理後台</small></span>
+    </a>
+    <nav class="site-nav" aria-label="主要導覽">
+      <a href="/pokemon">公開圖鑑</a>
+      <a href="/docs">API 文件</a>
+      <button id="admin-logout" class="button button-ghost" type="button" hidden>登出</button>
+    </nav>
+  </header>
+
+  <main id="admin-main" class="page-shell admin-shell">
+    <section id="admin-login-panel" class="admin-login card" aria-labelledby="login-title">
+      <p class="eyebrow">SECURE ADMIN</p>
+      <h1 id="login-title">管理員登入</h1>
+      <p class="muted">使用環境變數設定的單一管理密碼。密碼不會寫入資料庫。</p>
+      <form id="admin-login-form" class="stack-form">
+        <label class="field">
+          <span>管理密碼</span>
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        </label>
+        <button class="button button-primary" type="submit">登入後台</button>
+      </form>
+    </section>
+
+    <section id="admin-dashboard" hidden>
+      <div class="page-heading">
+        <div><p class="eyebrow">CONTENT OPERATIONS</p><h1>寶可夢資料管理</h1></div>
+        <button id="admin-new" class="button button-primary" type="button">新增寶可夢</button>
+      </div>
+
+      <p id="admin-status" class="status-line" role="status" aria-live="polite"></p>
+
+      <div class="admin-grid">
+        <section class="card admin-list-panel" aria-labelledby="admin-list-title">
+          <div class="panel-heading">
+            <h2 id="admin-list-title">資料列表</h2>
+            <form id="admin-search-form" role="search">
+              <input id="admin-search" type="search" placeholder="搜尋中英文名稱" maxlength="100">
+            </form>
+          </div>
+          <div id="admin-list" class="admin-list"></div>
+          <div class="pagination-actions">
+            <button id="admin-prev" class="button button-ghost" type="button">上一頁</button>
+            <span id="admin-page-label">第 1 頁</span>
+            <button id="admin-next" class="button button-ghost" type="button">下一頁</button>
+          </div>
+        </section>
+
+        <section class="card admin-editor-panel" aria-labelledby="admin-editor-title">
+          <h2 id="admin-editor-title">新增資料</h2>
+          <form id="admin-editor" class="admin-form">
+            <input id="admin-id" type="hidden">
+            <label class="field"><span>圖鑑編號</span><input id="admin-pokedex-number" type="number" min="1" required></label>
+            <label class="field"><span>型態鍵</span><input id="admin-form-key" value="default" maxlength="80" required></label>
+            <label class="field"><span>中文名稱</span><input id="admin-name-zh" maxlength="120" required></label>
+            <label class="field"><span>英文名稱</span><input id="admin-name-en" maxlength="120" required></label>
+            <label class="field"><span>世代</span><input id="admin-generation" type="number" min="1" max="9" required></label>
+            <label class="field"><span>屬性代碼（逗號分隔）</span><input id="admin-types" placeholder="grass,poison" required></label>
+            <label class="field"><span>中文分類</span><input id="admin-category" maxlength="160"></label>
+            <label class="field"><span>英文分類</span><input id="admin-genus" maxlength="160"></label>
+            <label class="field admin-wide"><span>特性</span><input id="admin-abilities" maxlength="2000"></label>
+            <label class="field admin-wide"><span>蛋群</span><input id="admin-egg-groups" maxlength="1000"></label>
+            <label class="field admin-wide"><span>主要分析敘述</span><textarea id="admin-analysis" rows="7" maxlength="20000"></textarea></label>
+            <label class="field admin-wide"><span>主要圖片 URL</span><input id="admin-image-url" type="url"></label>
+            <label class="check-field"><input id="admin-legendary" type="checkbox"><span>傳說寶可夢</span></label>
+            <label class="check-field"><input id="admin-mythical" type="checkbox"><span>幻之寶可夢</span></label>
+            <div class="admin-wide editor-actions">
+              <button class="button button-primary" type="submit">儲存資料</button>
+              <button id="admin-toggle-active" class="button button-danger" type="button" hidden>停用</button>
+              <button id="admin-cancel" class="button button-ghost" type="button">清除表單</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
