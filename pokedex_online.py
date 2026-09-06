@@ -8,8 +8,8 @@ from typing import Dict, List, Any  # 用來標註函式輸入/輸出型態，�
 import jieba  # 中文斷詞：把中文句子拆成詞，讓人格關鍵字比對更準
 import numpy as np  # 向量與數學運算：人格向量、正規化、分數計算
 import pandas as pd  # 讀取 pokedex_final.csv，並用 DataFrame 管理寶可夢資料
-from dotenv import load_dotenv  # 載入 .env 裡面的 GEMINI_API_KEY、HF_TOKEN 等設定
-from google import genai  # Gemini API：用來產生自然語言 AI 分析
+from dotenv import load_dotenv  # 載入 .env 裡面的 OPENAI_API_KEY、HF_TOKEN 等設定
+from openai import OpenAI  # OpenAI Responses API：用來產生自然語言 AI 分析
 from sentence_transformers import SentenceTransformer  # 將文字轉成語意向量 embedding
 from sklearn.metrics.pairwise import cosine_similarity  # 計算使用者文字與寶可夢資料的相似度
 
@@ -57,10 +57,10 @@ FILE_PATH = resolve_csv_path()
 # 原本 all-MiniLM-L6-v2 偏英文，中文語意效果比較不穩。
 # 這個模型支援中文與英文，適合你的中英混合 final.csv。
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
-HF_TOKEN = os.getenv("HF_TOKEN")
-API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_ID = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-client = genai.Client(api_key=API_KEY) if API_KEY else None
+HF_TOKEN = os.getenv("HF_TOKEN") or None
+API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL_ID = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+client = OpenAI(api_key=API_KEY) if API_KEY else None
 
 
 # =====================
@@ -378,7 +378,7 @@ class PokemonRecommender:
         idxs = np.argsort(-vec)[:top_n]
         return [TRAITS[i] for i in idxs if vec[i] > 0]
 
-    def recommend(self, user_text: str) -> Dict:
+    def recommend(self, user_text: str, top_k: int = 3) -> List[Dict]:
         """
         函式用途：
         根據使用者輸入，推薦最符合的寶可夢。
@@ -407,12 +407,29 @@ class PokemonRecommender:
         alpha = min(0.8, 0.35 + np.linalg.norm(user_persona_vec) * 0.35)
         final_sims = alpha * persona_sims + (1 - alpha) * semantic_sims
 
-        idx = int(np.argmax(final_sims))
-        row = self.df.iloc[idx]
-        score_percent = float(np.clip(final_sims[idx] * 100, 0, 100))
+        if not 1 <= top_k <= 10:
+            raise ValueError("❌ top_k 必須介於 1 到 10。")
 
-        return {
-            "pokedex_number": int(row[self.id_col]) if str(row[self.id_col]).isdigit() else row[self.id_col],
+        # 使用穩定排序確保相同輸入可重現；資料列索引作為同分時的固定順序。
+        ranked_indexes = np.argsort(-final_sims, kind="stable")[:top_k]
+        results: List[Dict] = []
+        seen_pokedex_numbers = set()
+
+        for idx in ranked_indexes:
+            row = self.df.iloc[int(idx)]
+            pokedex_number = (
+                int(row[self.id_col])
+                if str(row[self.id_col]).isdigit()
+                else row[self.id_col]
+            )
+            if pokedex_number in seen_pokedex_numbers:
+                continue
+            seen_pokedex_numbers.add(pokedex_number)
+            score_percent = float(np.clip(final_sims[idx] * 100, 0, 100))
+
+            results.append({
+            "rank": len(results) + 1,
+            "pokedex_number": pokedex_number,
             "name": self.safe_get(row, self.name_col),
             "name_en": self.safe_get(row, self.name_en_col),
             "type": self.safe_get(row, self.type_col),
@@ -438,12 +455,14 @@ class PokemonRecommender:
                 "speed": self.safe_get(row, "speed"),
                 "base_stat_total": self.safe_get(row, "base_stat_total"),
             },
-        }
+            })
+
+        return results
 
     def explain_offline(self, user_text: str, pokemon: Dict) -> str:
         """
         函式用途：
-        沒有 Gemini API KEY 或 Gemini 暫時失敗時，使用的備用解釋。
+        沒有 OpenAI API Key 或 OpenAI 暫時失敗時，使用的備用解釋。
         """
 
         user_traits = "、".join(pokemon.get("user_traits", [])) or "語意特徵"
@@ -458,10 +477,10 @@ class PokemonRecommender:
     def explain(self, user_text: str, pokemon: Dict) -> str:
         """
         函式用途：
-        呼叫 Gemini 產生 60～80 字自然解釋。
+        呼叫 OpenAI Responses API 產生 60～80 字自然解釋。
 
         ✅ 這次也更新 prompt：
-        讓 Gemini 同時看到中文習性與英文習性，
+        讓 OpenAI 模型同時看到中文習性與英文習性，
         避免它只根據中文描述或只根據寶可夢名稱亂猜。
         """
 
@@ -497,10 +516,22 @@ class PokemonRecommender:
 """
 
         try:
-            res = client.models.generate_content(model=MODEL_ID, contents=prompt)
-            return res.text.strip()
+            response = client.responses.create(
+                model=MODEL_ID,
+                instructions=(
+                    "你是寶可夢人格推薦解釋器。只能根據提供的寶可夢資料說明，"
+                    "不可補充未提供的設定，也不要把相似分數描述成心理診斷或統計機率。"
+                ),
+                input=prompt,
+                max_output_tokens=250,
+                store=False,
+            )
+            explanation = response.output_text.strip()
+            if not explanation:
+                raise RuntimeError("OpenAI API 未回傳文字內容。")
+            return explanation
         except Exception as e:
-            return f"{self.explain_offline(user_text, pokemon)}\n\n⚠️ Gemini 解釋暫時失敗：{e}"
+            return f"{self.explain_offline(user_text, pokemon)}\n\n⚠️ OpenAI 解釋暫時失敗：{e}"
 
 
 def main() -> None:
@@ -516,20 +547,19 @@ def main() -> None:
         if text.lower() == "exit":
             break
 
-        result = engine.recommend(text)
-        explanation = engine.explain(text, result)
+        results = engine.recommend(text, top_k=3)
 
         print("\n========================")
-        print("✨ 分析結果 ✨")
+        print("✨ Top 3 分析結果 ✨")
         print("========================")
-        print(f"圖鑑編號：{result['pokedex_number']}")
-        print(f"寶可夢：{result['name']} / {result['name_en']}")
-        print(f"屬性：{result['type']} / {result['type_en']}")
-        print(f"分類：{result['category']} / {result['genus']}")
-        print(f"契合度：{result['score']:.2f}%")
-        print(f"圖片：{result['img']}")
-        print("\nAI 分析：")
-        print(explanation)
+        for result in results:
+            explanation = engine.explain(text, result)
+            print(f"\n第 {result['rank']} 名：#{result['pokedex_number']} {result['name']} / {result['name_en']}")
+            print(f"屬性：{result['type']} / {result['type_en']}")
+            print(f"分類：{result['category']} / {result['genus']}")
+            print(f"契合度：{result['score']:.2f}%")
+            print(f"圖片：{result['img']}")
+            print(f"AI 分析：{explanation}")
 
 
 if __name__ == "__main__":
