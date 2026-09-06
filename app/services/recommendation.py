@@ -71,10 +71,10 @@ class HybridRecommendationEngine:
             if encoded_array.shape != (384,) or not np.isfinite(encoded_array).all():
                 raise ValueError("unexpected query vector shape or values")
             query_vector = encoded_array.tolist()
-        except Exception as exc:
+        except Exception:
             raise RetrievalUnavailableError(
                 "query encoder is temporarily unavailable"
-            ) from exc
+            ) from None
 
         try:
             with self.session_factory() as session:
@@ -86,12 +86,17 @@ class HybridRecommendationEngine:
                 )
         except RetrievalUnavailableError:
             raise
-        except Exception as exc:
+        except Exception:
             raise RetrievalUnavailableError(
                 "hybrid retrieval is temporarily unavailable"
-            ) from exc
+            ) from None
 
-        user_persona = self.profile_engine.text_to_persona_vector(text)
+        try:
+            user_persona = self.profile_engine.text_to_persona_vector(text)
+        except Exception:
+            raise RetrievalUnavailableError(
+                "personality scoring is temporarily unavailable"
+            ) from None
         alpha = min(0.8, 0.35 + float(np.linalg.norm(user_persona)) * 0.35)
         max_rrf_score = 2.0 / (RRF_K + 1)
         ranked: list[tuple[tuple[float, float, float, int, str, int], dict[str, Any]]] = []

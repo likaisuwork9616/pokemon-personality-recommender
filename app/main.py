@@ -2,7 +2,8 @@ from contextlib import asynccontextmanager
 import os
 from typing import Any, Callable
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -73,6 +74,33 @@ def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
     application.include_router(catalog_router)
     application.include_router(web_router)
     application.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+    @application.exception_handler(RequestValidationError)
+    async def sanitized_validation_error(
+        _request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        """Return useful validation metadata without echoing private input."""
+
+        errors = [
+            {
+                "location": list(error.get("loc", ())),
+                "message": error.get("msg", "Invalid request"),
+                "type": error.get("type", "value_error"),
+            }
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": {
+                    "code": "request_validation_error",
+                    "message": "Request validation failed",
+                    "errors": errors,
+                }
+            },
+        )
+
     @application.get("/health/live", tags=["health"])
     async def live() -> dict[str, str]: return {"status": "ok"}
     @application.get("/health/ready", tags=["health"])
