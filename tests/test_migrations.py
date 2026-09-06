@@ -17,11 +17,15 @@ CORE_TABLES = {
     "pokemon_descriptions",
     "pokemon_images",
 }
+KNOWLEDGE_TABLES = {
+    "pokemon_knowledge_documents",
+    "pokemon_knowledge_chunks",
+}
 
 
 class CoreSchemaTests(unittest.TestCase):
-    def test_metadata_contains_only_the_core_chapter_tables(self):
-        self.assertEqual(set(Base.metadata.tables), CORE_TABLES)
+    def test_metadata_contains_the_core_chapter_tables(self):
+        self.assertTrue(CORE_TABLES.issubset(Base.metadata.tables))
 
     def test_pokemon_identity_and_form_key_are_constrained(self):
         table = Base.metadata.tables["pokemon"]
@@ -120,6 +124,17 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn("DROP EXTENSION IF EXISTS vector", revision)
         self.assertNotIn("Vector(", revision)
         self.assertNotIn("knowledge_chunks", revision)
+
+    def test_second_revision_adds_versioned_uuid_documents_and_fts_chunks(self):
+        self.assertTrue(KNOWLEDGE_TABLES.issubset(Base.metadata.tables))
+        chunks = Base.metadata.tables["pokemon_knowledge_chunks"]
+        self.assertIsNotNone(chunks.c.textsearch.computed)
+        revision = (
+            ROOT / "alembic" / "versions" / "20260906_0002_knowledge_documents.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260906_0001"', revision)
+        self.assertIn('postgresql_using="gin"', revision)
+        self.assertIn("to_tsvector('simple'", revision)
 
 
 if __name__ == "__main__":

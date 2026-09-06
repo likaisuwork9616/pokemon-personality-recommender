@@ -17,6 +17,8 @@ from app.db.models import (
     Pokemon,
     PokemonDescription,
     PokemonImage,
+    PokemonKnowledgeChunk,
+    PokemonKnowledgeDocument,
     PokemonStats,
     PokemonType,
     Type,
@@ -214,6 +216,9 @@ class PostgresImporterIntegrationTests(unittest.TestCase):
         self.assertEqual(self.scalar_count(PokemonStats), 2)
         self.assertEqual(self.scalar_count(PokemonDescription), 6)
         self.assertEqual(self.scalar_count(PokemonImage), 4)
+        self.assertEqual(self.scalar_count(PokemonKnowledgeDocument), 8)
+        first_chunk_count = self.scalar_count(PokemonKnowledgeChunk)
+        self.assertGreaterEqual(first_chunk_count, 8)
 
         with self.session_factory() as session:
             before = list(
@@ -223,6 +228,8 @@ class PostgresImporterIntegrationTests(unittest.TestCase):
             )
         second = importer.import_records(self.records)
         self.assertEqual((second.created, second.existing), (0, 2))
+        self.assertEqual(self.scalar_count(PokemonKnowledgeDocument), 8)
+        self.assertEqual(self.scalar_count(PokemonKnowledgeChunk), first_chunk_count)
         with self.session_factory() as session:
             after = list(
                 session.execute(
@@ -277,6 +284,17 @@ class PostgresImporterIntegrationTests(unittest.TestCase):
                 )
             )
             self.assertEqual(stored.content, changed_content)
+            versions = list(
+                session.scalars(
+                    select(PokemonKnowledgeDocument.version)
+                    .where(
+                        PokemonKnowledgeDocument.pokemon_id == stored.pokemon_id,
+                        PokemonKnowledgeDocument.source_key == "description_zh",
+                    )
+                    .order_by(PokemonKnowledgeDocument.version)
+                )
+            )
+            self.assertEqual(versions, [1, 2])
 
 
 if __name__ == "__main__":

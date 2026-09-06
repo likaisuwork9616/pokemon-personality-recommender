@@ -12,9 +12,9 @@ import jieba
 
 
 DOCUMENT_FIELDS = (
-    ("description_zh", "zh", "description_zh"),
+    ("description_zh", "zh-Hant", "description_zh"),
     ("flavor_text_en", "en", "flavor_text_en"),
-    ("analysis_text", "mixed", "analysis_text"),
+    ("analysis_text", "mul", "analysis_text"),
 )
 
 
@@ -53,10 +53,15 @@ def _stable_id(kind: str, *parts: object) -> str:
     return str(uuid5(NAMESPACE_URL, value))
 
 
-def build_knowledge_documents(record: Mapping[str, object]) -> list[KnowledgeDocument]:
+def build_knowledge_documents(
+    record: Mapping[str, object],
+    *,
+    versions: Mapping[str, int] | None = None,
+) -> list[KnowledgeDocument]:
     """Convert one imported Pokémon record into independently traceable documents."""
 
     pokemon_key = f"{record['pokedex_number']}:{record.get('form_key') or 'default'}"
+    version_by_source = versions or {}
     documents: list[KnowledgeDocument] = []
 
     profile_parts = [
@@ -79,16 +84,26 @@ def build_knowledge_documents(record: Mapping[str, object]) -> list[KnowledgeDoc
     for document_kind, language, source_key, content in sources:
         if not content:
             continue
+        version = version_by_source.get(source_key, 1)
+        if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+            raise ValueError(f"version for {source_key!r} must be a positive integer")
         digest = content_hash(content)
         documents.append(
             KnowledgeDocument(
-                document_id=_stable_id("document", pokemon_key, source_key, digest),
+                document_id=_stable_id(
+                    "document",
+                    pokemon_key,
+                    source_key,
+                    version,
+                    digest,
+                ),
                 pokemon_key=pokemon_key,
                 source_key=source_key,
                 document_kind=document_kind,
                 language=language,
                 content=content,
                 content_hash=digest,
+                version=version,
             )
         )
     return documents
@@ -107,23 +122,27 @@ def _sentences(content: str) -> list[str]:
 
 
 def _windowed_chunks(sentences: Iterable[str], max_chars: int, overlap_chars: int) -> list[str]:
+    """Pack sentences into bounded windows with deterministic character overlap."""
+
     chunks: list[str] = []
     current = ""
     for sentence in sentences:
-        remaining = sentence
-        while len(remaining) > max_chars:
-            if current:
-                chunks.append(current)
-                current = ""
-            chunks.append(remaining[:max_chars])
-            remaining = remaining[max_chars - overlap_chars :]
-        candidate = f"{current}{remaining}"
+        if not current:
+            candidate = sentence
+        else:
+            candidate = f"{current} {sentence}"
+
         if current and len(candidate) > max_chars:
             chunks.append(current)
             overlap = current[-overlap_chars:] if overlap_chars else ""
-            current = f"{overlap}{remaining}"
-        else:
-            current = candidate
+            candidate = f"{overlap} {sentence}" if overlap else sentence
+
+        step = max_chars - overlap_chars
+        while len(candidate) > max_chars:
+            chunks.append(candidate[:max_chars])
+            candidate = candidate[step:]
+        current = candidate
+
     if current:
         chunks.append(current)
     return chunks
@@ -143,7 +162,9 @@ def split_knowledge_document(
         raise ValueError("overlap_chars must be between 0 and max_chars")
 
     chunks: list[KnowledgeChunk] = []
-    for index, text in enumerate(_windowed_chunks(_sentences(document.content), max_chars, overlap_chars)):
+    for index, text in enumerate(
+        _windowed_chunks(_sentences(document.content), max_chars, overlap_chars)
+    ):
         digest = content_hash(text)
         tokens = [token.strip() for token in jieba.lcut(text) if token.strip()]
         chunks.append(
