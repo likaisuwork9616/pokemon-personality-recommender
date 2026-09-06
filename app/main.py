@@ -8,8 +8,17 @@ from app.schemas import RecommendationResponse
 EngineFactory = Callable[[], Any]
 
 def _default_engine_factory() -> Any:
-    from pokedex_online import FILE_PATH, PokemonRecommender
-    return PokemonRecommender(FILE_PATH)
+    import pandas as pd
+
+    from app.db.session import get_session_factory
+    from app.repositories import PokemonRepository
+    from pokedex_online import PokemonRecommender
+
+    with get_session_factory()() as session:
+        records = PokemonRepository(session).recommender_records()
+    if not records:
+        raise RuntimeError("PostgreSQL 尚無寶可夢資料，請先執行 scripts/import_pokemon.py")
+    return PokemonRecommender(dataframe=pd.DataFrame.from_records(records))
 
 def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
     factory = engine_factory or _default_engine_factory

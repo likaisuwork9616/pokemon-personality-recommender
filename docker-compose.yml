@@ -37,7 +37,7 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
-      migrate:
+      seed:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -63,6 +63,20 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - scripts/import_pokemon.py
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     restart: "no"
 
 volumes:
