@@ -38,6 +38,7 @@ class CatalogDescription(BaseModel):
     source_key: str
     content: str
     content_hash: str
+    is_primary: bool
 
 
 class CatalogImage(BaseModel):

@@ -69,6 +69,7 @@ def pokemon_fixture(identifier: int, *, name: str) -> SimpleNamespace:
                 source_key="csv:description_zh",
                 content="會在陽光下休息。",
                 content_hash="a" * 64,
+                is_primary=True,
             )
         ],
         stats=namespace(

@@ -1,0 +1,341 @@
+"""Authenticated administrator API for Pokémon lifecycle management."""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.api.catalog import _catalog_item, _images
+from app.api.deps import get_session
+from app.repositories.admin import AdminPokemonRepository
+from app.schemas.admin import (
+    AdminLoginRequest,
+    AdminPokemonCreate,
+    AdminPokemonDetail,
+    AdminPokemonPage,
+    AdminPokemonSummary,
+    AdminPokemonUpdate,
+    AdminSessionResponse,
+)
+from app.schemas.catalog import CatalogDescription, CatalogImage, CatalogStats
+from app.services.admin_auth import (
+    AdminAuth,
+    AdminDisabledError,
+    AdminSession,
+    InvalidAdminCredentials,
+    InvalidAdminSession,
+    InvalidCsrfToken,
+)
+
+
+router = APIRouter(prefix="/api/v1/admin", tags=["pokemon administration"])
+
+
+def get_admin_repository(
+    session: Annotated[Session, Depends(get_session)],
+) -> AdminPokemonRepository:
+    return AdminPokemonRepository(session)
+
+
+def get_admin_auth(request: Request) -> AdminAuth:
+    return request.app.state.admin_auth
+
+
+def require_admin(
+    request: Request,
+    auth: Annotated[AdminAuth, Depends(get_admin_auth)],
+) -> AdminSession:
+    try:
+        return auth.verify_session(request.cookies.get(auth.config.cookie_name))
+    except AdminDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "admin_disabled", "message": str(exc)},
+        ) from None
+    except InvalidAdminSession:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "admin_auth_required", "message": "需要管理員驗證。"},
+        ) from None
+
+
+def require_csrf(
+    admin_session: Annotated[AdminSession, Depends(require_admin)],
+    csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+) -> AdminSession:
+    try:
+        AdminAuth.verify_csrf(admin_session, csrf_token)
+    except InvalidCsrfToken:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "invalid_csrf_token", "message": "CSRF 驗證失敗。"},
+        ) from None
+    return admin_session
+
+
+def _session_response(admin_session: AdminSession) -> AdminSessionResponse:
+    return AdminSessionResponse(
+        csrf_token=admin_session.csrf_token,
+        expires_at=admin_session.expires_at,
+    )
+
+
+def _detail(pokemon: Any) -> AdminPokemonDetail:
+    stats = pokemon.stats
+    return AdminPokemonDetail(
+        **_catalog_item(pokemon).model_dump(),
+        category_zh=pokemon.category_zh,
+        genus=pokemon.genus,
+        descriptions=[
+            CatalogDescription(
+                id=item.id,
+                language_code=item.language_code,
+                description_kind=item.description_kind,
+                source_key=item.source_key,
+                content=item.content,
+                content_hash=item.content_hash,
+                is_primary=item.is_primary,
+            )
+            for item in sorted(
+                pokemon.descriptions,
+                key=lambda item: (
+                    item.language_code,
+                    item.description_kind,
+                    item.source_key,
+                    item.id,
+                ),
+            )
+        ],
+        stats=(
+            CatalogStats(
+                hp=stats.hp,
+                attack=stats.attack,
+                defense=stats.defense,
+                sp_attack=stats.sp_attack,
+                sp_defense=stats.sp_defense,
+                speed=stats.speed,
+                base_stat_total=stats.base_stat_total,
+            )
+            if stats is not None
+            else None
+        ),
+        images=[
+            CatalogImage(
+                id=item.id,
+                image_kind=item.image_kind,
+                image_url=item.image_url,
+                is_primary=item.is_primary,
+            )
+            for item in _images(pokemon)
+        ],
+        height_m=pokemon.height_m,
+        weight_kg=pokemon.weight_kg,
+        abilities=pokemon.abilities,
+        hidden_ability=pokemon.hidden_ability,
+        egg_groups=pokemon.egg_groups,
+        habitat=pokemon.habitat,
+        color=pokemon.color,
+        shape=pokemon.shape,
+        growth_rate=pokemon.growth_rate,
+        capture_rate=pokemon.capture_rate,
+        is_baby=pokemon.is_baby,
+        is_active=pokemon.is_active,
+    )
+
+
+def _get_or_404(repository: AdminPokemonRepository, pokemon_id: int):
+    pokemon = repository.get(pokemon_id)
+    if pokemon is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "pokemon_not_found", "message": "找不到指定的寶可夢。"},
+        )
+    return pokemon
+
+
+def _commit(repository: AdminPokemonRepository) -> None:
+    try:
+        repository.session.commit()
+    except IntegrityError:
+        repository.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "pokemon_conflict",
+                "message": "圖鑑編號、型態或子資料與現有資料衝突。",
+            },
+        ) from None
+
+
+def _rollback_conflict(repository: AdminPokemonRepository) -> None:
+    repository.session.rollback()
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "pokemon_conflict",
+            "message": "圖鑑編號、型態或子資料與現有資料衝突。",
+        },
+    ) from None
+
+
+@router.post("/session", response_model=AdminSessionResponse, summary="管理員登入")
+def login(payload: AdminLoginRequest, request: Request) -> JSONResponse:
+    auth: AdminAuth = request.app.state.admin_auth
+    try:
+        token, admin_session = auth.login(payload.password)
+    except AdminDisabledError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "admin_disabled", "message": str(exc)},
+        ) from None
+    except InvalidAdminCredentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "invalid_admin_credentials", "message": "登入失敗。"},
+        ) from None
+    response = JSONResponse(_session_response(admin_session).model_dump())
+    response.set_cookie(
+        key=auth.config.cookie_name,
+        value=token,
+        max_age=auth.config.session_ttl_seconds,
+        httponly=True,
+        secure=auth.config.cookie_secure,
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@router.get("/session", response_model=AdminSessionResponse, summary="取得管理工作階段")
+def session_status(
+    admin_session: Annotated[AdminSession, Depends(require_admin)],
+) -> AdminSessionResponse:
+    return _session_response(admin_session)
+
+
+@router.delete("/session", status_code=204, summary="管理員登出")
+def logout(
+    request: Request,
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+) -> Response:
+    auth: AdminAuth = request.app.state.admin_auth
+    response = Response(status_code=204)
+    response.delete_cookie(
+        auth.config.cookie_name,
+        path="/",
+        secure=auth.config.cookie_secure,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
+
+
+@router.get("/pokemon", response_model=AdminPokemonPage, summary="列出所有寶可夢")
+def list_pokemon(
+    _admin_session: Annotated[AdminSession, Depends(require_admin)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> AdminPokemonPage:
+    items, total = repository.list_all(q=q, page=page, page_size=page_size)
+    return AdminPokemonPage(
+        items=[
+            AdminPokemonSummary(
+                id=item.id,
+                pokedex_number=item.pokedex_number,
+                form_key=item.form_key,
+                name_zh=item.name_zh,
+                name_en=item.name_en,
+                generation=item.generation,
+                is_active=item.is_active,
+            )
+            for item in items
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=(total + page_size - 1) // page_size,
+    )
+
+
+@router.get("/pokemon/{pokemon_id}", response_model=AdminPokemonDetail, summary="查看寶可夢")
+def pokemon_detail(
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_admin)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+) -> AdminPokemonDetail:
+    return _detail(_get_or_404(repository, pokemon_id))
+
+
+@router.post(
+    "/pokemon",
+    response_model=AdminPokemonDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="新增寶可夢",
+)
+def create_pokemon(
+    payload: AdminPokemonCreate,
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+) -> AdminPokemonDetail:
+    try:
+        pokemon = repository.create(payload)
+        _commit(repository)
+    except IntegrityError:
+        _rollback_conflict(repository)
+    except ValueError as exc:
+        repository.session.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_pokemon_data", "message": str(exc)},
+        ) from None
+    return _detail(pokemon)
+
+
+@router.patch("/pokemon/{pokemon_id}", response_model=AdminPokemonDetail, summary="修改寶可夢")
+def update_pokemon(
+    payload: AdminPokemonUpdate,
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+) -> AdminPokemonDetail:
+    pokemon = _get_or_404(repository, pokemon_id)
+    try:
+        pokemon = repository.update(pokemon, payload)
+        _commit(repository)
+    except IntegrityError:
+        _rollback_conflict(repository)
+    except ValueError as exc:
+        repository.session.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "invalid_pokemon_data", "message": str(exc)},
+        ) from None
+    return _detail(pokemon)
+
+
+@router.post("/pokemon/{pokemon_id}/deactivate", response_model=AdminPokemonDetail, summary="停用寶可夢")
+def deactivate_pokemon(
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+) -> AdminPokemonDetail:
+    pokemon = repository.set_active(_get_or_404(repository, pokemon_id), False)
+    _commit(repository)
+    return _detail(pokemon)
+
+
+@router.post("/pokemon/{pokemon_id}/restore", response_model=AdminPokemonDetail, summary="恢復寶可夢")
+def restore_pokemon(
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+) -> AdminPokemonDetail:
+    pokemon = repository.set_active(_get_or_404(repository, pokemon_id), True)
+    _commit(repository)
+    return _detail(pokemon)

@@ -13,6 +13,17 @@ templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 router = APIRouter(include_in_schema=False)
 
 
+@router.get("/admin", response_class=HTMLResponse, name="pokemon_admin")
+async def admin_page(request: Request) -> HTMLResponse:
+    """Render the same-origin administrator shell without exposing secrets."""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={"page_title": "寶可夢資料管理"},
+    )
+
+
 @router.get("/pokemon", response_class=HTMLResponse, name="pokemon_catalog")
 async def catalog_page(request: Request) -> HTMLResponse:
     """Render the searchable catalog shell; data is loaded from the v1 API."""
