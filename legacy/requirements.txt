@@ -1,0 +1,2 @@
+# Install after the root requirements only when running the archived Gradio UI.
+gradio==6.26.0

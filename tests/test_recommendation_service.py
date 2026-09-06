@@ -64,6 +64,13 @@ class _ProfileEngine:
         )
         self.persona_vectors = np.zeros((3, 16))
 
+    def _validate_columns(self):
+        if "_database_id" not in self.df:
+            raise ValueError("missing database identity")
+
+    def build_persona_vectors(self):
+        return np.zeros((len(self.df), 16))
+
     @staticmethod
     def text_to_persona_vector(_text):
         return np.zeros(16)
@@ -130,7 +137,7 @@ class _Retriever:
 
 
 class HybridRecommendationEngineTests(unittest.TestCase):
-    def _engine(self, candidates):
+    def _engine(self, candidates, *, profile_records_loader=None):
         profile = _ProfileEngine()
         sessions = []
         retriever = _Retriever(candidates)
@@ -145,6 +152,7 @@ class HybridRecommendationEngineTests(unittest.TestCase):
             session_factory=session_factory,
             embedding_model_id=9,
             retrieval_service_factory=lambda _session: retriever,
+            profile_records_loader=profile_records_loader,
         )
         return engine, profile, sessions, retriever
 
@@ -243,6 +251,31 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         results = engine.recommend("安靜守護夥伴")
 
         self.assertEqual([item["database_id"] for item in results], [1, 2, 3])
+
+    def test_newly_indexed_id_self_refreshes_profile_snapshot(self):
+        records = _ProfileEngine().df.to_dict(orient="records")
+        records[-1] = {
+            **records[-1],
+            "_database_id": 4,
+            "pokedex_number": 4,
+            "name_zh": "新加入的寶可夢",
+        }
+        loader_calls = []
+
+        def load_records():
+            loader_calls.append(True)
+            return records
+
+        engine, _profile, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(4, 0.01)],
+            profile_records_loader=load_records,
+        )
+
+        results = engine.recommend("安靜守護夥伴")
+
+        self.assertEqual([item["database_id"] for item in results], [1, 2, 4])
+        self.assertEqual(results[-1]["name"], "新加入的寶可夢")
+        self.assertEqual(len(loader_calls), 1)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ env/
 .gradio/
 .ipynb_checkpoints/
 old/
+legacy/
 
 tests/
 *.md

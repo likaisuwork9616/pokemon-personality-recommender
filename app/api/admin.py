@@ -209,6 +209,22 @@ def _rollback_conflict(repository: AdminPokemonRepository) -> None:
     ) from None
 
 
+def _refresh_runtime_profiles(request: Request) -> None:
+    """Refresh committed catalog changes without making admin writes fail."""
+
+    engine = getattr(request.app.state, "recommendation_engine", None)
+    refresh = getattr(engine, "refresh_profiles", None)
+    if not callable(refresh):
+        return
+    try:
+        refresh()
+        request.app.state.profile_refresh_error = None
+    except Exception:
+        # The recommendation engine also self-refreshes when it encounters a
+        # newly indexed ID. Never roll back an already committed admin edit.
+        request.app.state.profile_refresh_error = "profile refresh failed"
+
+
 @router.post("/session", response_model=AdminSessionResponse, summary="管理員登入")
 def login(payload: AdminLoginRequest, request: Request) -> JSONResponse:
     auth: AdminAuth = request.app.state.admin_auth
@@ -324,6 +340,7 @@ def pokemon_index_status(
     summary="重新建立知識向量",
 )
 def reindex_pokemon(
+    request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     service: Annotated[PokemonReindexService, Depends(get_reindex_service)],
@@ -354,6 +371,8 @@ def reindex_pokemon(
                 "message": "索引資料已變更，請重新載入後再試。",
             },
         ) from None
+    if summary.failed == 0:
+        _refresh_runtime_profiles(request)
     return AdminReindexResponse(
         pokemon_id=summary.pokemon_id,
         embedding_model_id=summary.embedding_model_id,
@@ -372,6 +391,7 @@ def reindex_pokemon(
 )
 def create_pokemon(
     payload: AdminPokemonCreate,
+    request: Request,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
 ) -> AdminPokemonDetail:
@@ -386,12 +406,14 @@ def create_pokemon(
             status_code=422,
             detail={"code": "invalid_pokemon_data", "message": str(exc)},
         ) from None
+    _refresh_runtime_profiles(request)
     return _detail(pokemon)
 
 
 @router.patch("/pokemon/{pokemon_id}", response_model=AdminPokemonDetail, summary="修改寶可夢")
 def update_pokemon(
     payload: AdminPokemonUpdate,
+    request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
@@ -408,26 +430,32 @@ def update_pokemon(
             status_code=422,
             detail={"code": "invalid_pokemon_data", "message": str(exc)},
         ) from None
+    if "descriptions" not in payload.model_fields_set:
+        _refresh_runtime_profiles(request)
     return _detail(pokemon)
 
 
 @router.post("/pokemon/{pokemon_id}/deactivate", response_model=AdminPokemonDetail, summary="停用寶可夢")
 def deactivate_pokemon(
+    request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
 ) -> AdminPokemonDetail:
     pokemon = repository.set_active(_get_or_404(repository, pokemon_id), False)
     _commit(repository)
+    _refresh_runtime_profiles(request)
     return _detail(pokemon)
 
 
 @router.post("/pokemon/{pokemon_id}/restore", response_model=AdminPokemonDetail, summary="恢復寶可夢")
 def restore_pokemon(
+    request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
 ) -> AdminPokemonDetail:
     pokemon = repository.set_active(_get_or_404(repository, pokemon_id), True)
     _commit(repository)
+    _refresh_runtime_profiles(request)
     return _detail(pokemon)

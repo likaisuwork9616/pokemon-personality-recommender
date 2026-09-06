@@ -28,8 +28,13 @@ def _default_engine_factory() -> Any:
     from pokedex_online import PokemonRecommender
 
     session_factory = get_session_factory()
+
+    def load_profile_records() -> list[dict[str, object]]:
+        with session_factory() as session:
+            return PokemonRepository(session).recommender_records()
+
+    records = load_profile_records()
     with session_factory() as session:
-        records = PokemonRepository(session).recommender_records()
         vector_repository = VectorRepository(session)
         active_model = vector_repository.active_model()
         ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
@@ -59,6 +64,7 @@ def _default_engine_factory() -> Any:
         session_factory=session_factory,
         embedding_model_id=active_model.id,
         explanation_service=GroundedExplanationService.from_env(),
+        profile_records_loader=load_profile_records,
     )
 
 def create_app(
