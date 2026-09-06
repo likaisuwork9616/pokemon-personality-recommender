@@ -378,6 +378,27 @@ class PokemonRecommender:
         idxs = np.argsort(-vec)[:top_n]
         return [TRAITS[i] for i in idxs if vec[i] > 0]
 
+    def build_matching_evidence(self, row: pd.Series, pokemon_traits: List[str]) -> List[Dict]:
+        """建立可直接顯示、且能追溯到 CSV 來源欄位的匹配證據。"""
+
+        evidence: List[Dict] = []
+        for source, column in [
+            ("analysis_text", self.analysis_col),
+            ("description_zh", self.desc_col),
+            ("flavor_text_en", self.flavor_en_col),
+        ]:
+            content = str(self.safe_get(row, column, "")).strip()
+            if not content:
+                continue
+            evidence.append({
+                "source": source,
+                "text": content[:240],
+                "matched_traits": pokemon_traits,
+            })
+            if len(evidence) == 2:
+                break
+        return evidence
+
     def recommend(self, user_text: str, top_k: int = 3) -> List[Dict]:
         """
         函式用途：
@@ -425,7 +446,11 @@ class PokemonRecommender:
             if pokedex_number in seen_pokedex_numbers:
                 continue
             seen_pokedex_numbers.add(pokedex_number)
-            score_percent = float(np.clip(final_sims[idx] * 100, 0, 100))
+            semantic_score = float(np.clip(semantic_sims[idx], 0, 1))
+            personality_score = float(np.clip(persona_sims[idx], 0, 1))
+            total_score = float(np.clip(final_sims[idx], 0, 1))
+            pokemon_traits = self.get_top_traits(self.persona_vectors[idx])
+            score_percent = total_score * 100
 
             results.append({
             "rank": len(results) + 1,
@@ -442,10 +467,16 @@ class PokemonRecommender:
             "search_text": self.build_search_text(row),
             "img": self.safe_get(row, self.img_col) or self.safe_get(row, self.sprite_col),
             "sprite": self.safe_get(row, self.sprite_col),
+            "scores": {
+                "semantic": semantic_score,
+                "personality": personality_score,
+                "total": total_score,
+            },
+            "matching_evidence": self.build_matching_evidence(row, pokemon_traits),
             "score": score_percent,
             "score_ratio": score_percent / 100,
             "user_traits": self.get_top_traits(user_persona_vec),
-            "pokemon_traits": self.get_top_traits(self.persona_vectors[idx]),
+            "pokemon_traits": pokemon_traits,
             "stats": {
                 "hp": self.safe_get(row, "hp"),
                 "attack": self.safe_get(row, "attack"),
