@@ -58,6 +58,96 @@ class PokemonRepository:
         )
         return list(self.session.scalars(statement))
 
+    def search_catalog(
+        self,
+        *,
+        q: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+        type_code: str | None = None,
+        generation: int | None = None,
+        is_legendary: bool | None = None,
+        is_mythical: bool | None = None,
+    ) -> tuple[list[Pokemon], int]:
+        """Return one active-only catalog page and its unpaginated count."""
+
+        filters = [Pokemon.is_active.is_(True)]
+        normalized_query = (q or "").strip()
+        if normalized_query:
+            escaped = (
+                normalized_query.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            pattern = f"%{escaped}%"
+            filters.append(
+                or_(
+                    Pokemon.name_zh.ilike(pattern, escape="\\"),
+                    Pokemon.name_en.ilike(pattern, escape="\\"),
+                )
+            )
+        if generation is not None:
+            filters.append(Pokemon.generation == generation)
+        if is_legendary is not None:
+            filters.append(Pokemon.is_legendary.is_(is_legendary))
+        if is_mythical is not None:
+            filters.append(Pokemon.is_mythical.is_(is_mythical))
+
+        normalized_type = (type_code or "").strip()
+        if normalized_type:
+            type_value = normalized_type.casefold()
+            filters.append(
+                select(PokemonType.pokemon_id)
+                .join(Type, Type.id == PokemonType.type_id)
+                .where(
+                    PokemonType.pokemon_id == Pokemon.id,
+                    or_(
+                        func.lower(Type.code) == type_value,
+                        func.lower(Type.name_en) == type_value,
+                        Type.name_zh == normalized_type,
+                    ),
+                )
+                .exists()
+            )
+
+        total = int(
+            self.session.scalar(
+                select(func.count(Pokemon.id)).where(*filters)
+            )
+            or 0
+        )
+        statement = (
+            select(Pokemon)
+            .where(*filters)
+            .options(
+                selectinload(Pokemon.type_links).selectinload(
+                    PokemonType.type_record
+                ),
+                selectinload(Pokemon.images),
+            )
+            .order_by(Pokemon.pokedex_number, Pokemon.form_key, Pokemon.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.scalars(statement).unique()), total
+
+    def get_catalog_detail(self, pokemon_id: int) -> Pokemon | None:
+        """Load one active Pokemon and every relation needed by its detail page."""
+
+        statement = (
+            select(Pokemon)
+            .where(Pokemon.id == pokemon_id, Pokemon.is_active.is_(True))
+            .options(
+                selectinload(Pokemon.type_links).selectinload(
+                    PokemonType.type_record
+                ),
+                selectinload(Pokemon.stats),
+                selectinload(Pokemon.descriptions),
+                selectinload(Pokemon.images),
+            )
+        )
+        return self.session.scalar(statement)
+
     def recommender_records(self) -> list[dict[str, object]]:
         """Return the active catalog in the legacy engine's tabular contract.
 
