@@ -78,6 +78,14 @@
             <label class="field admin-wide"><span>主要圖片 URL</span><input id="admin-image-url" type="url"></label>
             <label class="check-field"><input id="admin-legendary" type="checkbox"><span>傳說寶可夢</span></label>
             <label class="check-field"><input id="admin-mythical" type="checkbox"><span>幻之寶可夢</span></label>
+            <section id="admin-index-panel" class="admin-wide index-panel" hidden aria-labelledby="admin-index-title">
+              <div>
+                <h3 id="admin-index-title">知識索引</h3>
+                <p id="admin-index-summary" class="muted">尚未讀取索引狀態。</p>
+              </div>
+              <button id="admin-reindex" class="button button-ghost" type="button">重新建立 embedding</button>
+              <ul id="admin-index-sources" class="index-source-list"></ul>
+            </section>
             <div class="admin-wide editor-actions">
               <button class="button button-primary" type="submit">儲存資料</button>
               <button id="admin-toggle-active" class="button button-danger" type="button" hidden>停用</button>

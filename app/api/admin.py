@@ -12,13 +12,18 @@ from sqlalchemy.orm import Session
 from app.api.catalog import _catalog_item, _images
 from app.api.deps import get_session
 from app.repositories.admin import AdminPokemonRepository
+from app.repositories.reindex import PokemonIndexState, PokemonReindexRepository
+from app.repositories.vector import VectorRepository
 from app.schemas.admin import (
+    AdminIndexSourceStatus,
+    AdminIndexStatus,
     AdminLoginRequest,
     AdminPokemonCreate,
     AdminPokemonDetail,
     AdminPokemonPage,
     AdminPokemonSummary,
     AdminPokemonUpdate,
+    AdminReindexResponse,
     AdminSessionResponse,
 )
 from app.schemas.catalog import CatalogDescription, CatalogImage, CatalogStats
@@ -29,6 +34,11 @@ from app.services.admin_auth import (
     InvalidAdminCredentials,
     InvalidAdminSession,
     InvalidCsrfToken,
+)
+from app.services.reindex import (
+    PokemonNotFoundError,
+    PokemonReindexService,
+    ReindexUnavailableError,
 )
 
 
@@ -43,6 +53,15 @@ def get_admin_repository(
 
 def get_admin_auth(request: Request) -> AdminAuth:
     return request.app.state.admin_auth
+
+
+def get_reindex_service(
+    session: Annotated[Session, Depends(get_session)],
+) -> PokemonReindexService:
+    return PokemonReindexService(
+        PokemonReindexRepository(session),
+        VectorRepository(session),
+    )
 
 
 def require_admin(
@@ -144,6 +163,14 @@ def _detail(pokemon: Any) -> AdminPokemonDetail:
         capture_rate=pokemon.capture_rate,
         is_baby=pokemon.is_baby,
         is_active=pokemon.is_active,
+    )
+
+
+def _index_status(state: PokemonIndexState) -> AdminIndexStatus:
+    return AdminIndexStatus(
+        pokemon_id=state.pokemon_id,
+        status=state.status,
+        sources=[AdminIndexSourceStatus(**vars(item)) for item in state.sources],
     )
 
 
@@ -270,6 +297,71 @@ def pokemon_detail(
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
 ) -> AdminPokemonDetail:
     return _detail(_get_or_404(repository, pokemon_id))
+
+
+@router.get(
+    "/pokemon/{pokemon_id}/index-status",
+    response_model=AdminIndexStatus,
+    summary="查看知識索引狀態",
+)
+def pokemon_index_status(
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_admin)],
+    service: Annotated[PokemonReindexService, Depends(get_reindex_service)],
+) -> AdminIndexStatus:
+    try:
+        return _index_status(service.status(pokemon_id))
+    except PokemonNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "pokemon_not_found", "message": "找不到指定的寶可夢。"},
+        ) from None
+
+
+@router.post(
+    "/pokemon/{pokemon_id}/reindex",
+    response_model=AdminReindexResponse,
+    summary="重新建立知識向量",
+)
+def reindex_pokemon(
+    pokemon_id: Annotated[int, Path(ge=1)],
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    service: Annotated[PokemonReindexService, Depends(get_reindex_service)],
+) -> AdminReindexResponse:
+    try:
+        summary = service.rebuild(pokemon_id)
+        service.repository.session.commit()
+    except PokemonNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "pokemon_not_found", "message": "找不到指定的寶可夢。"},
+        ) from None
+    except ReindexUnavailableError:
+        service.repository.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "reindex_unavailable",
+                "message": "目前沒有可用的 embedding model。",
+            },
+        ) from None
+    except IntegrityError:
+        service.repository.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "reindex_conflict",
+                "message": "索引資料已變更，請重新載入後再試。",
+            },
+        ) from None
+    return AdminReindexResponse(
+        pokemon_id=summary.pokemon_id,
+        embedding_model_id=summary.embedding_model_id,
+        discovered=summary.discovered,
+        embedded=summary.embedded,
+        failed=summary.failed,
+        index=_index_status(summary.index),
+    )
 
 
 @router.post(

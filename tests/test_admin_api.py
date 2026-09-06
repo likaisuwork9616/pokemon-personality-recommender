@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 
-from app.api.admin import get_admin_repository
+from app.api.admin import get_admin_repository, get_reindex_service
 from app.main import create_app
 from app.repositories import AdminPokemonRepository
+from app.repositories.reindex import IndexSourceState, PokemonIndexState
 from app.schemas.admin import AdminPokemonCreate, AdminPokemonUpdate
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
+from app.services.reindex import PokemonReindexSummary
 
 
 def namespace(**values):
@@ -209,9 +211,50 @@ class FakeAdminRepository:
         return pokemon
 
 
+class FakeReindexService:
+    def __init__(self) -> None:
+        self.repository = namespace(session=FakeSession())
+        self.calls = 0
+
+    @staticmethod
+    def _state(status="stale"):
+        return PokemonIndexState(
+            pokemon_id=1,
+            status=status,
+            sources=(
+                IndexSourceState(
+                    source_key="analysis_text",
+                    status=status,
+                    current_document_id=None,
+                    current_version=None,
+                    staged_document_id=None,
+                    staged_version=2,
+                    total_chunks=1,
+                    ready_chunks=1 if status == "ready" else 0,
+                    last_error=None,
+                ),
+            ),
+        )
+
+    def status(self, _pokemon_id):
+        return self._state()
+
+    def rebuild(self, _pokemon_id):
+        self.calls += 1
+        return PokemonReindexSummary(
+            pokemon_id=1,
+            embedding_model_id=7,
+            discovered=1,
+            embedded=1,
+            failed=0,
+            index=self._state("ready"),
+        )
+
+
 class AdminApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repository = FakeAdminRepository()
+        self.reindex_service = FakeReindexService()
         self.auth = AdminAuth(
             AdminAuthConfig(
                 password="portfolio-admin-password",
@@ -223,6 +266,9 @@ class AdminApiTests(unittest.TestCase):
         self.application = create_app(lambda: object(), admin_auth=self.auth)
         self.application.dependency_overrides[get_admin_repository] = (
             lambda: self.repository
+        )
+        self.application.dependency_overrides[get_reindex_service] = (
+            lambda: self.reindex_service
         )
         self.context = TestClient(self.application)
         self.client = self.context.__enter__()
@@ -355,6 +401,31 @@ class AdminApiTests(unittest.TestCase):
             401,
         )
 
+    def test_index_status_and_rebuild_require_the_expected_auth_guards(self):
+        csrf, _set_cookie = self.login()
+
+        status_response = self.client.get(
+            "/api/v1/admin/pokemon/1/index-status"
+        )
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.json()["status"], "stale")
+        self.assertEqual(
+            status_response.json()["sources"][0]["source_key"],
+            "analysis_text",
+        )
+
+        denied = self.client.post("/api/v1/admin/pokemon/1/reindex")
+        self.assertEqual(denied.status_code, 403)
+        rebuilt = self.client.post(
+            "/api/v1/admin/pokemon/1/reindex",
+            headers={"X-CSRF-Token": csrf},
+        )
+        self.assertEqual(rebuilt.status_code, 200)
+        self.assertEqual(rebuilt.json()["index"]["status"], "ready")
+        self.assertEqual(rebuilt.json()["embedded"], 1)
+        self.assertEqual(self.reindex_service.calls, 1)
+        self.assertEqual(self.reindex_service.repository.session.commits, 1)
+
     def test_admin_page_and_openapi_are_exposed(self):
         page = self.client.get("/admin")
         self.assertEqual(page.status_code, 200)
@@ -364,6 +435,7 @@ class AdminApiTests(unittest.TestCase):
         paths = self.application.openapi()["paths"]
         self.assertIn("/api/v1/admin/session", paths)
         self.assertIn("/api/v1/admin/pokemon/{pokemon_id}", paths)
+        self.assertIn("/api/v1/admin/pokemon/{pokemon_id}/reindex", paths)
 
 
 class AdminSchemaTests(unittest.TestCase):

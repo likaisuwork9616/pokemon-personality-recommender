@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from math import isfinite, sqrt
 from typing import Protocol
 
@@ -42,13 +43,14 @@ class EmbeddingBuildSummary:
     failed: int
 
 
-def _default_encoder_factory(model_name: str) -> SentenceEncoder:
+@lru_cache(maxsize=2)
+def default_encoder_factory(model_name: str) -> SentenceEncoder:
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(model_name)
 
 
-def _validated_vector(values, dimensions: int) -> list[float]:
+def validate_embedding_vector(values, dimensions: int) -> list[float]:
     vector = [float(value) for value in values]
     if len(vector) != dimensions or not all(isfinite(value) for value in vector):
         raise ValueError(f"encoder must return {dimensions} finite values per chunk")
@@ -66,7 +68,7 @@ class EmbeddingService:
         repository: VectorRepository,
         *,
         config: EmbeddingConfig | None = None,
-        encoder_factory: Callable[[str], SentenceEncoder] = _default_encoder_factory,
+        encoder_factory: Callable[[str], SentenceEncoder] = default_encoder_factory,
     ) -> None:
         self.repository = repository
         self.config = config or EmbeddingConfig()
@@ -111,7 +113,7 @@ class EmbeddingService:
                 if len(vectors) != len(batch):
                     raise ValueError("encoder returned a different number of vectors")
                 validated = [
-                    _validated_vector(vector, self.config.dimensions)
+                    validate_embedding_vector(vector, self.config.dimensions)
                     for vector in vectors
                 ]
             except Exception as exc:
