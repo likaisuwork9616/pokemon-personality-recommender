@@ -177,6 +177,7 @@ class PokemonRepository:
             stats = pokemon.stats
             record: dict[str, object] = {
                 "_database_id": pokemon.id,
+                "_form_key": pokemon.form_key,
                 "pokedex_number": pokemon.pokedex_number,
                 "name_zh": pokemon.name_zh,
                 "name_en": pokemon.name_en,

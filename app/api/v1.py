@@ -1,6 +1,10 @@
 from typing import Any
+
 from fastapi import APIRouter, HTTPException, Request, status
+from starlette.concurrency import run_in_threadpool
+
 from app.schemas import PokemonSummary, RecommendationRequest, RecommendationResponse, RecommendationResult
+from app.services.recommendation import RetrievalUnavailableError
 
 router = APIRouter(prefix="/api/v1")
 
@@ -16,8 +20,29 @@ def _to_result(raw: dict[str, Any], explanation: str | None) -> RecommendationRe
 async def create_recommendation(payload: RecommendationRequest, request: Request) -> RecommendationResponse:
     engine = _engine(request)
     try:
-        raw_results = engine.recommend(payload.text.strip(), top_k=3)
-        return RecommendationResponse(results=[_to_result(raw, engine.explain(payload.text, raw) if payload.generate_explanation else None) for raw in raw_results])
+        def run_recommendation() -> RecommendationResponse:
+            raw_results = engine.recommend(payload.text.strip(), top_k=3)
+            return RecommendationResponse(
+                results=[
+                    _to_result(
+                        raw,
+                        engine.explain(payload.text, raw)
+                        if payload.generate_explanation
+                        else None,
+                    )
+                    for raw in raw_results
+                ]
+            )
+
+        return await run_in_threadpool(run_recommendation)
+    except RetrievalUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "retrieval_unavailable",
+                "message": str(exc),
+            },
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "invalid_recommendation_input", "message": str(exc)}) from exc
 
