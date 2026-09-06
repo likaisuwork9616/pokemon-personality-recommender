@@ -96,6 +96,22 @@ class RecommendationSchemaTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             EvidenceResponse.model_validate(invalid_dense_score)
 
+    def test_explanation_may_only_cite_its_own_evidence(self):
+        valid = [_result(number) for number in (1, 2, 3)]
+        valid[0]["explanation"] = {
+            "text": "這段說明只根據同一筆推薦的檢索證據。",
+            "citations": [f"ev_{1:032x}"],
+            "provider": "gemini",
+            "grounded": True,
+            "used_fallback": False,
+        }
+        self.assertIsNotNone(RecommendationResponse(results=valid))
+
+        invalid = copy.deepcopy(valid)
+        invalid[0]["explanation"]["citations"] = [f"ev_{2:032x}"]
+        with self.assertRaises(ValidationError):
+            RecommendationResponse(results=invalid)
+
 
 if __name__ == "__main__":
     unittest.main()
