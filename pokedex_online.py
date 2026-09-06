@@ -145,14 +145,18 @@ class PokemonRecommender:
     5. 回傳最符合的寶可夢
     """
 
-    def __init__(self, path: str = FILE_PATH):
+    def __init__(self, path: str = FILE_PATH, dataframe: pd.DataFrame | None = None):
         """
         函式用途：
         初始化推薦系統，只在程式啟動時跑一次。
         """
 
-        print("🚀 載入寶可夢資料：", path)
-        self.df = pd.read_csv(path, encoding="utf-8").fillna("")
+        if dataframe is None:
+            print("🚀 載入寶可夢資料：", path)
+            self.df = pd.read_csv(path, encoding="utf-8").fillna("")
+        else:
+            print("🚀 從 PostgreSQL 載入寶可夢資料")
+            self.df = dataframe.copy().fillna("")
 
         # 新版 pokedex_final.csv 欄位名稱
         self.id_col = "pokedex_number"
