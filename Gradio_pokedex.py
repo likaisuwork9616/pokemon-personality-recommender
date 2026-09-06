@@ -117,7 +117,8 @@ def predict(text):
     )
 
     try:
-        result = engine.recommend(text)
+        # 舊版 Gradio 畫面仍只顯示第一名；正式 FastAPI API 會回傳 Top 3。
+        result = engine.recommend(text, top_k=3)[0]
         explanation = engine.explain(text, result)
     except Exception as e:
         yield (

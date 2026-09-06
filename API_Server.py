@@ -81,10 +81,12 @@ def recommend(user: UserInput):
     接收使用者文字，回傳推薦寶可夢與 AI 分析。
     """
 
-    result = engine.recommend(user.text)
-    explanation = engine.explain(user.text, result)
+    results = engine.recommend(user.text, top_k=3)
+    explanations = [engine.explain(user.text, pokemon) for pokemon in results]
 
     return {
-        "pokemon": result,
-        "explanation": explanation,
+        "results": [
+            {**pokemon, "explanation": explanation}
+            for pokemon, explanation in zip(results, explanations)
+        ],
     }
