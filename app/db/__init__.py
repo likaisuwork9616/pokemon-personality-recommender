@@ -2,11 +2,13 @@
 
 from app.db.base import Base
 from app.db.models import (
+    EmbeddingModel,
     Pokemon,
     PokemonDescription,
     PokemonImage,
     PokemonKnowledgeChunk,
     PokemonKnowledgeDocument,
+    PokemonChunkEmbedding,
     PokemonStats,
     PokemonType,
     Type,
@@ -14,11 +16,13 @@ from app.db.models import (
 
 __all__ = [
     "Base",
+    "EmbeddingModel",
     "Pokemon",
     "PokemonDescription",
     "PokemonImage",
     "PokemonKnowledgeChunk",
     "PokemonKnowledgeDocument",
+    "PokemonChunkEmbedding",
     "PokemonStats",
     "PokemonType",
     "Type",
