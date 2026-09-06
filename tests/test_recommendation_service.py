@@ -160,7 +160,14 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertTrue(sessions[0].closed)
         self.assertEqual(retriever.calls[0]["embedding_model_id"], 9)
         self.assertEqual(len(retriever.calls[0]["query_vector"]), 384)
-        self.assertEqual(results[0]["matching_evidence"][0]["source"], "analysis_text")
+        evidence = results[0]["matching_evidence"][0]
+        self.assertEqual(evidence["source"], "analysis_text")
+        self.assertEqual(evidence["evidence_id"], f"ev_{evidence['chunk_id'].replace('-', '')}")
+        self.assertEqual(evidence["document_kind"], "analysis")
+        self.assertEqual(evidence["language_code"], "mul")
+        self.assertEqual(evidence["content_hash"], "a" * 64)
+        self.assertEqual((evidence["dense_rank"], evidence["lexical_rank"]), (1, 1))
+        self.assertTrue(all(0 <= value <= 1 for value in results[0]["scores"].values()))
 
     def test_incomplete_unique_candidates_are_a_service_error(self):
         engine, _profile, sessions, _retriever = self._engine(

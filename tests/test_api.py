@@ -14,6 +14,7 @@ class FakeEngine:
         return [
             {
                 "rank": rank,
+                "database_id": rank,
                 "pokedex_number": rank,
                 "name": f"寶可夢{rank}",
                 "name_en": f"Pokemon {rank}",
@@ -26,8 +27,19 @@ class FakeEngine:
                 },
                 "matching_evidence": [
                     {
+                        "evidence_id": f"ev_{rank:032x}",
+                        "document_id": f"00000000-0000-0000-0000-{rank:012x}",
+                        "chunk_id": f"00000000-0000-0000-0000-{rank:012x}",
                         "source": "analysis_text",
+                        "document_kind": "analysis",
+                        "language_code": "mul",
                         "text": "重視夥伴",
+                        "content_hash": f"{rank:064x}",
+                        "dense_rank": rank,
+                        "dense_score": 0.8,
+                        "lexical_rank": None,
+                        "lexical_score": None,
+                        "rrf_score": 1 / (60 + rank),
                         "matched_traits": ["守護型人格"],
                     }
                 ],
@@ -58,6 +70,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 3)
         self.assertEqual(response.json()["algorithm_version"], "pgvector-fts-rrf-v1")
+        first = response.json()["results"][0]
+        self.assertEqual(first["pokemon"]["id"], 1)
+        self.assertEqual(first["evidence"][0]["evidence_id"], f"ev_{1:032x}")
+        self.assertEqual(first["evidence"][0]["dense_rank"], 1)
+        self.assertIsNone(first["evidence"][0]["lexical_rank"])
         self.assertEqual(self.engine.explain_calls, 0)
 
     def test_explanation_is_opt_in(self):
@@ -80,6 +97,17 @@ class ApiTests(unittest.TestCase):
         schema = self.client.get("/openapi.json").json()
         self.assertIn("/api/v1/recommendations", schema["paths"])
         self.assertTrue(schema["paths"]["/recommend"]["post"]["deprecated"])
+        evidence_schema = schema["components"]["schemas"]["EvidenceResponse"]
+        self.assertTrue(
+            {
+                "evidence_id",
+                "document_id",
+                "chunk_id",
+                "dense_rank",
+                "lexical_rank",
+                "rrf_score",
+            }.issubset(evidence_schema["properties"])
+        )
 
     def test_health(self):
         self.assertEqual(self.client.get("/health/live").status_code, 200)

@@ -147,22 +147,34 @@ class HybridRecommendationEngine:
                 "img": self.profile_engine.safe_get(row, self.profile_engine.img_col)
                 or self.profile_engine.safe_get(row, self.profile_engine.sprite_col),
                 "scores": {
-                    "semantic": semantic,
-                    "personality": personality,
-                    "total": total,
+                    "semantic": round(semantic, 8),
+                    "personality": round(personality, 8),
+                    "total": round(total, 8),
                 },
                 "matching_evidence": [
                     {
-                        "source": evidence.source_key,
-                        "text": evidence.content[:240],
-                        "matched_traits": pokemon_traits,
-                        # The current response schema ignores these lineage fields;
-                        # MVP-02 promotes them into the public evidence contract.
+                        "evidence_id": f"ev_{evidence.chunk_id.hex}",
                         "document_id": str(evidence.document_id),
                         "chunk_id": str(evidence.chunk_id),
+                        "source": evidence.source_key,
+                        "document_kind": evidence.document_kind,
+                        "language_code": evidence.language_code,
+                        "text": evidence.content[:240],
+                        "content_hash": evidence.content_hash,
                         "dense_rank": evidence.dense_rank,
+                        "dense_score": (
+                            round(float(np.clip(evidence.dense_score, -1, 1)), 8)
+                            if evidence.dense_score is not None
+                            else None
+                        ),
                         "lexical_rank": evidence.lexical_rank,
-                        "rrf_score": evidence.rrf_score,
+                        "lexical_score": (
+                            round(max(0.0, evidence.lexical_score), 8)
+                            if evidence.lexical_score is not None
+                            else None
+                        ),
+                        "rrf_score": round(evidence.rrf_score, 10),
+                        "matched_traits": pokemon_traits,
                     }
                     for evidence in candidate.evidence
                 ],

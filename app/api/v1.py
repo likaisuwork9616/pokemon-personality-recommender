@@ -15,7 +15,20 @@ def _engine(request: Request) -> Any:
     return engine
 
 def _to_result(raw: dict[str, Any], explanation: str | None) -> RecommendationResult:
-    return RecommendationResult(rank=raw["rank"], pokemon=PokemonSummary(pokedex_number=raw["pokedex_number"], name_zh=raw.get("name", ""), name_en=raw.get("name_en", ""), types=raw.get("type", ""), image_url=raw.get("img") or None), scores=raw["scores"], evidence=raw.get("matching_evidence", []), explanation=explanation)
+    return RecommendationResult(
+        rank=raw["rank"],
+        pokemon=PokemonSummary(
+            id=raw["database_id"],
+            pokedex_number=raw["pokedex_number"],
+            name_zh=raw.get("name", ""),
+            name_en=raw.get("name_en", ""),
+            types=raw.get("type", ""),
+            image_url=raw.get("img") or None,
+        ),
+        scores=raw["scores"],
+        evidence=raw.get("matching_evidence", []),
+        explanation=explanation,
+    )
 
 async def create_recommendation(payload: RecommendationRequest, request: Request) -> RecommendationResponse:
     engine = _engine(request)
