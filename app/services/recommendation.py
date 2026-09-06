@@ -11,6 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from app.repositories.retrieval import RetrievalRepository
 from app.repositories.vector import VectorRepository
 from app.services.hybrid_retrieval import HybridRetrievalService, RRF_K
+from app.services.rag import GroundedExplanationService
 
 
 class RetrievalUnavailableError(RuntimeError):
@@ -32,6 +33,7 @@ class HybridRecommendationEngine:
         session_factory: Callable[[], Any],
         embedding_model_id: int,
         retrieval_service_factory: Callable[[Any], Any] | None = None,
+        explanation_service: GroundedExplanationService | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -42,6 +44,7 @@ class HybridRecommendationEngine:
                 RetrievalRepository(session),
             )
         )
+        self.explanation_service = explanation_service or GroundedExplanationService()
         self._encode_lock = Lock()
 
         database_ids: dict[int, int] = {}
@@ -212,7 +215,21 @@ class HybridRecommendationEngine:
             results.append(result)
         return results
 
-    def explain(self, user_text: str, pokemon: dict[str, Any]) -> str:
-        """Compatibility bridge until the grounded RAG chapter replaces it."""
+    def explain_results(
+        self,
+        user_text: str,
+        pokemon_results: list[dict[str, Any]],
+    ) -> dict[int, dict[str, object]]:
+        explanations = self.explanation_service.explain_many(
+            user_text,
+            pokemon_results,
+        )
+        return {
+            pokemon_id: explanation.as_dict()
+            for pokemon_id, explanation in explanations.items()
+        }
 
-        return self.profile_engine.explain(user_text, pokemon)
+    def explain(self, user_text: str, pokemon: dict[str, Any]) -> dict[str, object]:
+        """Generate one grounded explanation for compatibility callers."""
+
+        return self.explain_results(user_text, [pokemon])[int(pokemon["database_id"])]

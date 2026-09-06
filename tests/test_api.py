@@ -49,7 +49,13 @@ class FakeEngine:
 
     def explain(self, text, pokemon):
         self.explain_calls += 1
-        return f"推薦 {pokemon['name']}"
+        return {
+            "text": f"根據檢索證據推薦 {pokemon['name']} 作為代表。",
+            "citations": [pokemon["matching_evidence"][0]["evidence_id"]],
+            "provider": "local",
+            "grounded": True,
+            "used_fallback": True,
+        }
 
 
 class ApiTests(unittest.TestCase):
@@ -85,6 +91,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.engine.explain_calls, 3)
+        self.assertTrue(response.json()["results"][0]["explanation"]["grounded"])
 
     def test_validation_and_openapi(self):
         self.assertEqual(

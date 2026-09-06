@@ -9,7 +9,7 @@ from .catalog import (
     CatalogType,
     PokemonDetail,
 )
-from .recommendation import EvidenceResponse, PokemonSummary, RecommendationRequest, RecommendationResponse, RecommendationResult, ScoreBreakdown
+from .recommendation import EvidenceResponse, ExplanationResponse, PokemonSummary, RecommendationRequest, RecommendationResponse, RecommendationResult, ScoreBreakdown
 
 __all__ = [
     "CatalogDescription",
@@ -19,6 +19,7 @@ __all__ = [
     "CatalogStats",
     "CatalogType",
     "EvidenceResponse",
+    "ExplanationResponse",
     "PokemonDetail",
     "PokemonSummary",
     "RecommendationRequest",

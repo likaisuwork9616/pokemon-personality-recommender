@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Self
+import re
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -78,12 +79,41 @@ class PokemonSummary(BaseModel):
     image_url: str | None = None
 
 
+class ExplanationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=10, max_length=400)
+    citations: list[str] = Field(min_length=1, max_length=3)
+    provider: Literal["gemini", "openai", "local"]
+    grounded: Literal[True] = True
+    used_fallback: bool
+
+    @model_validator(mode="after")
+    def validate_citations(self) -> Self:
+        if len(set(self.citations)) != len(self.citations):
+            raise ValueError("explanation citations must be unique")
+        if any(not re.fullmatch(r"ev_[0-9a-f]{32}", item) for item in self.citations):
+            raise ValueError("explanation citation has an invalid evidence ID")
+        if (self.provider == "local") != self.used_fallback:
+            raise ValueError("local provider and fallback status must agree")
+        return self
+
+
 class RecommendationResult(BaseModel):
     rank: int = Field(ge=1, le=3)
     pokemon: PokemonSummary
     scores: ScoreBreakdown
     evidence: list[EvidenceResponse] = Field(min_length=1, max_length=3)
-    explanation: str | None = None
+    explanation: ExplanationResponse | None = None
+
+    @model_validator(mode="after")
+    def require_explanation_citations_from_own_evidence(self) -> Self:
+        if self.explanation is None:
+            return self
+        allowed = {item.evidence_id for item in self.evidence}
+        if not set(self.explanation.citations).issubset(allowed):
+            raise ValueError("explanation cited evidence from another recommendation")
+        return self
 
 
 class RecommendationResponse(BaseModel):

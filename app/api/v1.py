@@ -14,7 +14,7 @@ def _engine(request: Request) -> Any:
         raise HTTPException(status_code=503, detail={"code": "service_not_ready", "message": "推薦模型尚未完成載入"})
     return engine
 
-def _to_result(raw: dict[str, Any], explanation: str | None) -> RecommendationResult:
+def _to_result(raw: dict[str, Any], explanation: dict[str, Any] | None) -> RecommendationResult:
     return RecommendationResult(
         rank=raw["rank"],
         pokemon=PokemonSummary(
@@ -35,13 +35,21 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
     try:
         def run_recommendation() -> RecommendationResponse:
             raw_results = engine.recommend(payload.text.strip(), top_k=3)
+            explanations: dict[int, dict[str, Any]] = {}
+            if payload.generate_explanation:
+                explain_results = getattr(engine, "explain_results", None)
+                if callable(explain_results):
+                    explanations = explain_results(payload.text, raw_results)
+                else:
+                    explanations = {
+                        int(raw["database_id"]): engine.explain(payload.text, raw)
+                        for raw in raw_results
+                    }
             return RecommendationResponse(
                 results=[
                     _to_result(
                         raw,
-                        engine.explain(payload.text, raw)
-                        if payload.generate_explanation
-                        else None,
+                        explanations.get(int(raw["database_id"])),
                     )
                     for raw in raw_results
                 ]

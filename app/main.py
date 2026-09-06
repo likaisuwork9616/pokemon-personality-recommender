@@ -11,6 +11,7 @@ from app.api.catalog import router as catalog_router
 from app.api.v1 import create_recommendation, router as v1_router
 from app.schemas import RecommendationResponse
 from app.services.embedding import DEFAULT_MODEL_NAME
+from app.services.rag import GroundedExplanationService
 from app.services.recommendation import HybridRecommendationEngine
 from app.web.routes import router as web_router
 
@@ -55,6 +56,7 @@ def _default_engine_factory() -> Any:
         profile_engine=profile_engine,
         session_factory=session_factory,
         embedding_model_id=active_model.id,
+        explanation_service=GroundedExplanationService.from_env(),
     )
 
 def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
