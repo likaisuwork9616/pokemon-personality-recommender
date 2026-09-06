@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Mapping
+from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -13,9 +14,15 @@ from app.db.models import (
     Pokemon,
     PokemonDescription,
     PokemonImage,
+    PokemonKnowledgeChunk,
+    PokemonKnowledgeDocument,
     PokemonStats,
     PokemonType,
     Type,
+)
+from app.services.knowledge import (
+    build_knowledge_documents,
+    split_knowledge_document,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +79,10 @@ class PokemonRepository:
         records: list[dict[str, object]] = []
         for pokemon in self.session.scalars(statement).unique():
             type_links = sorted(pokemon.type_links, key=lambda link: link.slot)
-            descriptions = {item.source_key: item.content for item in pokemon.descriptions}
+            descriptions = {
+                item.source_key.removeprefix("csv:"): item.content
+                for item in pokemon.descriptions
+            }
             images = {item.image_kind: item.image_url for item in pokemon.images}
             stats = pokemon.stats
             record: dict[str, object] = {
@@ -161,6 +171,7 @@ class PokemonRepository:
         self._upsert_stats(pokemon_id, record)
         self._upsert_descriptions(pokemon_id, record)
         self._upsert_images(pokemon_id, record)
+        self._sync_knowledge(pokemon_id, record)
         return pokemon_id
 
     def _upsert_pokemon(self, record: ParsedPokemonRow) -> int:
@@ -291,5 +302,174 @@ class PokemonRepository:
                         for name in mutable_columns
                     )
                 ),
+            )
+            self.session.execute(statement)
+
+    def _sync_knowledge(self, pokemon_id: int, record: ParsedPokemonRow) -> None:
+        """Version derived documents and make their deterministic chunks current."""
+
+        type_names = dict(
+            self.session.execute(
+                select(Type.code, Type.name_zh).where(Type.code.in_(record.type_codes))
+            )
+        )
+        description_contents = {
+            item.source_key.removeprefix("csv:"): item.content
+            for item in record.descriptions
+        }
+        source_record: dict[str, object] = {
+            **asdict(record.pokemon),
+            "type_zh": ", ".join(type_names[code] for code in record.type_codes),
+            **description_contents,
+        }
+
+        description_ids = {
+            source_key.removeprefix("csv:"): description_id
+            for source_key, description_id in self.session.execute(
+                select(PokemonDescription.source_key, PokemonDescription.id).where(
+                    PokemonDescription.pokemon_id == pokemon_id
+                )
+            )
+        }
+        current_documents = list(
+            self.session.scalars(
+                select(PokemonKnowledgeDocument).where(
+                    PokemonKnowledgeDocument.pokemon_id == pokemon_id,
+                    PokemonKnowledgeDocument.is_current.is_(True),
+                )
+            )
+        )
+        current_by_source = {
+            document.source_key: document for document in current_documents
+        }
+        latest_versions = dict(
+            self.session.execute(
+                select(
+                    PokemonKnowledgeDocument.source_key,
+                    func.max(PokemonKnowledgeDocument.version),
+                )
+                .where(PokemonKnowledgeDocument.pokemon_id == pokemon_id)
+                .group_by(PokemonKnowledgeDocument.source_key)
+            )
+        )
+
+        provisional = build_knowledge_documents(source_record)
+        versions = {
+            document.source_key: (
+                current_by_source[document.source_key].version
+                if document.source_key in current_by_source
+                and current_by_source[document.source_key].content_hash
+                == document.content_hash
+                else int(latest_versions.get(document.source_key, 0)) + 1
+            )
+            for document in provisional
+        }
+        desired_documents = build_knowledge_documents(
+            source_record,
+            versions=versions,
+        )
+        desired_sources = {document.source_key for document in desired_documents}
+
+        for old_document in current_documents:
+            replacement = next(
+                (
+                    document
+                    for document in desired_documents
+                    if document.source_key == old_document.source_key
+                ),
+                None,
+            )
+            if (
+                old_document.source_key not in desired_sources
+                or replacement is None
+                or old_document.content_hash != replacement.content_hash
+            ):
+                self._mark_document_stale(old_document.id)
+
+        for document in desired_documents:
+            document_id = UUID(document.document_id)
+            values = {
+                "id": document_id,
+                "pokemon_id": pokemon_id,
+                "source_description_id": description_ids.get(document.source_key),
+                "source_key": document.source_key,
+                "document_kind": document.document_kind,
+                "language_code": document.language,
+                "content": document.content,
+                "content_hash": document.content_hash,
+                "version": document.version,
+                "is_current": True,
+                "status": "ready",
+            }
+            base = insert(PokemonKnowledgeDocument).values(**values)
+            statement = base.on_conflict_do_update(
+                index_elements=[PokemonKnowledgeDocument.id],
+                set_={
+                    "source_description_id": base.excluded.source_description_id,
+                    "is_current": True,
+                    "status": "ready",
+                    "updated_at": func.now(),
+                },
+            )
+            self.session.execute(statement)
+            self._sync_chunks(document_id, document)
+
+    def _mark_document_stale(self, document_id: UUID) -> None:
+        self.session.execute(
+            update(PokemonKnowledgeDocument)
+            .where(PokemonKnowledgeDocument.id == document_id)
+            .values(is_current=False, status="stale", updated_at=func.now())
+        )
+        self.session.execute(
+            update(PokemonKnowledgeChunk)
+            .where(
+                PokemonKnowledgeChunk.document_id == document_id,
+                PokemonKnowledgeChunk.is_current.is_(True),
+            )
+            .values(is_current=False, status="stale")
+        )
+
+    def _sync_chunks(self, document_id: UUID, document) -> None:
+        chunks = split_knowledge_document(document)
+        desired_ids = {UUID(chunk.chunk_id) for chunk in chunks}
+        existing_current = list(
+            self.session.scalars(
+                select(PokemonKnowledgeChunk).where(
+                    PokemonKnowledgeChunk.document_id == document_id,
+                    PokemonKnowledgeChunk.is_current.is_(True),
+                )
+            )
+        )
+        for old_chunk in existing_current:
+            if old_chunk.id not in desired_ids:
+                self.session.execute(
+                    update(PokemonKnowledgeChunk)
+                    .where(PokemonKnowledgeChunk.id == old_chunk.id)
+                    .values(is_current=False, status="stale")
+                )
+
+        for chunk in chunks:
+            values = {
+                "id": UUID(chunk.chunk_id),
+                "document_id": document_id,
+                "chunk_index": chunk.chunk_index,
+                "content": chunk.content,
+                "lexical_text": chunk.lexical_text,
+                "content_hash": chunk.content_hash,
+                "char_count": chunk.char_count,
+                "token_count": chunk.token_count,
+                "is_current": True,
+                "status": "ready",
+            }
+            base = insert(PokemonKnowledgeChunk).values(**values)
+            statement = base.on_conflict_do_update(
+                index_elements=[PokemonKnowledgeChunk.id],
+                set_={
+                    "lexical_text": base.excluded.lexical_text,
+                    "char_count": base.excluded.char_count,
+                    "token_count": base.excluded.token_count,
+                    "is_current": True,
+                    "status": "ready",
+                },
             )
             self.session.execute(statement)

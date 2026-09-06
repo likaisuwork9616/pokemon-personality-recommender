@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Double,
+    Computed,
     ForeignKey,
     Identity,
     Index,
@@ -20,10 +22,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from app.db.base import Base
 
@@ -153,6 +157,11 @@ class Pokemon(Base):
         passive_deletes=True,
     )
     images: Mapped[list[PokemonImage]] = relationship(
+        back_populates="pokemon",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    knowledge_documents: Mapped[list[PokemonKnowledgeDocument]] = relationship(
         back_populates="pokemon",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -332,6 +341,10 @@ class PokemonDescription(Base):
     )
 
     pokemon: Mapped[Pokemon] = relationship(back_populates="descriptions")
+    knowledge_documents: Mapped[list[PokemonKnowledgeDocument]] = relationship(
+        back_populates="source_description",
+        passive_deletes=True,
+    )
 
 
 class PokemonImage(Base):
@@ -379,3 +392,189 @@ class PokemonImage(Base):
     )
 
     pokemon: Mapped[Pokemon] = relationship(back_populates="images")
+
+
+class PokemonKnowledgeDocument(Base):
+    """Immutable, versioned RAG document derived from a traceable source."""
+
+    __tablename__ = "pokemon_knowledge_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "pokemon_id",
+            "source_key",
+            "version",
+            name="uq_knowledge_document_version",
+        ),
+        CheckConstraint("length(trim(source_key)) > 0", name="source_key_not_blank"),
+        CheckConstraint(
+            "length(trim(document_kind)) > 0",
+            name="document_kind_not_blank",
+        ),
+        CheckConstraint(
+            "length(trim(language_code)) > 0",
+            name="language_code_not_blank",
+        ),
+        CheckConstraint("length(trim(content)) > 0", name="content_not_blank"),
+        CheckConstraint("length(content_hash) = 64", name="content_hash_length"),
+        CheckConstraint("version > 0", name="version_positive"),
+        CheckConstraint(
+            "status IN ('ready', 'stale', 'failed')",
+            name="status_valid",
+        ),
+        Index(
+            "ix_knowledge_documents_pokemon_current",
+            "pokemon_id",
+            "is_current",
+            "status",
+        ),
+        Index(
+            "uq_knowledge_documents_current_source",
+            "pokemon_id",
+            "source_key",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    pokemon_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("pokemon.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_description_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "pokemon_descriptions.id",
+            name="fk_knowledge_document_source_description",
+            ondelete="SET NULL",
+        ),
+    )
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    document_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_current: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ready",
+        server_default=text("'ready'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    pokemon: Mapped[Pokemon] = relationship(back_populates="knowledge_documents")
+    source_description: Mapped[PokemonDescription | None] = relationship(
+        back_populates="knowledge_documents"
+    )
+    chunks: Mapped[list[PokemonKnowledgeChunk]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PokemonKnowledgeChunk(Base):
+    """Smallest traceable retrieval and citation unit for a document."""
+
+    __tablename__ = "pokemon_knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "chunk_index",
+            "content_hash",
+            name="uq_knowledge_chunk_version",
+        ),
+        CheckConstraint("chunk_index >= 0", name="chunk_index_nonnegative"),
+        CheckConstraint("length(trim(content)) > 0", name="content_not_blank"),
+        CheckConstraint("length(content_hash) = 64", name="content_hash_length"),
+        CheckConstraint("char_count > 0", name="char_count_positive"),
+        CheckConstraint("token_count >= 0", name="token_count_nonnegative"),
+        CheckConstraint(
+            "status IN ('ready', 'stale', 'failed')",
+            name="status_valid",
+        ),
+        Index(
+            "ix_knowledge_chunks_document_current",
+            "document_id",
+            "is_current",
+            "status",
+        ),
+        Index(
+            "uq_knowledge_chunks_current_index",
+            "document_id",
+            "chunk_index",
+            unique=True,
+            postgresql_where=text("is_current"),
+        ),
+        Index(
+            "ix_knowledge_chunks_textsearch",
+            "textsearch",
+            postgresql_using="gin",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    document_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "pokemon_knowledge_documents.id",
+            name="fk_knowledge_chunk_document",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    lexical_text: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="",
+        server_default=text("''"),
+    )
+    textsearch: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "to_tsvector('simple', coalesce(lexical_text, ''))",
+            persisted=True,
+        ),
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_current: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ready",
+        server_default=text("'ready'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    document: Mapped[PokemonKnowledgeDocument] = relationship(back_populates="chunks")
