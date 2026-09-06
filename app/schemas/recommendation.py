@@ -29,5 +29,5 @@ class RecommendationResult(BaseModel):
     explanation: str | None = None
 
 class RecommendationResponse(BaseModel):
-    algorithm_version: str = "csv-hybrid-v1"
+    algorithm_version: str = "pgvector-fts-rrf-v1"
     results: list[RecommendationResult]

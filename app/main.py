@@ -1,11 +1,16 @@
 from contextlib import asynccontextmanager
+import os
 from typing import Any, Callable
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+
 from app.api.catalog import router as catalog_router
 from app.api.v1 import create_recommendation, router as v1_router
 from app.schemas import RecommendationResponse
+from app.services.embedding import DEFAULT_MODEL_NAME
+from app.services.recommendation import HybridRecommendationEngine
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -18,30 +23,49 @@ def _default_engine_factory() -> Any:
     from app.repositories import PokemonRepository, VectorRepository
     from pokedex_online import PokemonRecommender
 
-    with get_session_factory()() as session:
+    session_factory = get_session_factory()
+    with session_factory() as session:
         records = PokemonRepository(session).recommender_records()
-        stored_vectors = VectorRepository(session).active_pokemon_embeddings()
+        vector_repository = VectorRepository(session)
+        active_model = vector_repository.active_model()
+        ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
     if not records:
         raise RuntimeError("PostgreSQL 尚無寶可夢資料，請先執行 scripts/import_pokemon.py")
-    missing = [record["_database_id"] for record in records if record["_database_id"] not in stored_vectors]
-    if missing:
-        raise RuntimeError(f"仍有 {len(missing)} 隻寶可夢缺少 pgvector embeddings")
-    matrix = []
-    for record in records:
-        vectors = np.asarray(stored_vectors[int(record["_database_id"])], dtype=float)
-        mean = vectors.mean(axis=0)
-        norm = np.linalg.norm(mean)
-        matrix.append(mean / norm if norm else mean)
-    return PokemonRecommender(
+    if ready_pokemon < 3:
+        raise RuntimeError("pgvector 索引少於 3 隻可推薦的寶可夢")
+
+    expected_model_name = os.getenv("EMBEDDING_MODEL", DEFAULT_MODEL_NAME)
+    expected_model_version = os.getenv("EMBEDDING_MODEL_VERSION", "default")
+    if (
+        active_model.model_name != expected_model_name
+        or active_model.model_version != expected_model_version
+        or not active_model.normalize_embeddings
+    ):
+        raise RuntimeError("目前 active embedding model 與 API query encoder 設定不一致")
+
+    # The legacy class remains the deterministic personality-profile component.
+    # Its corpus matrix is deliberately unused: semantic retrieval now stays in
+    # PostgreSQL and returns traceable chunk evidence for every request.
+    profile_engine = PokemonRecommender(
         dataframe=pd.DataFrame.from_records(records),
-        pokemon_embeddings=np.asarray(matrix),
+        pokemon_embeddings=np.zeros((len(records), 384), dtype=float),
+    )
+    return HybridRecommendationEngine(
+        profile_engine=profile_engine,
+        session_factory=session_factory,
+        embedding_model_id=active_model.id,
     )
 
 def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
     factory = engine_factory or _default_engine_factory
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.recommendation_engine = factory()
+        try:
+            application.state.recommendation_engine = factory()
+            application.state.readiness_error = None
+        except Exception as exc:
+            application.state.recommendation_engine = None
+            application.state.readiness_error = f"{type(exc).__name__}: {exc}"[:500]
         yield
         application.state.recommendation_engine = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格與語意證據推薦 Top 3 寶可夢。", version="2.1.0", lifespan=lifespan)

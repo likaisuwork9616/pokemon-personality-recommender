@@ -35,7 +35,10 @@ class VectorSearchHit:
     document_id: UUID
     chunk_id: UUID
     source_key: str
+    document_kind: str
+    language_code: str
     content: str
+    content_hash: str
     semantic_score: float
 
 
@@ -44,6 +47,52 @@ class VectorRepository:
 
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def active_model(self) -> EmbeddingModel:
+        """Return the one configured active model for startup preflight."""
+
+        statement = (
+            select(EmbeddingModel)
+            .where(EmbeddingModel.is_active.is_(True))
+            .order_by(EmbeddingModel.id)
+            .limit(2)
+        )
+        models = list(self.session.scalars(statement))
+        if not models:
+            raise RuntimeError("No active embedding model is configured")
+        if len(models) > 1:
+            raise RuntimeError("Multiple active embedding models are configured")
+        model = models[0]
+        if model.dimensions != 384:
+            raise RuntimeError("Active embedding model must have 384 dimensions")
+        return model
+
+    def ready_pokemon_count(self, embedding_model_id: int) -> int:
+        """Count active Pokémon that have at least one current ready vector."""
+
+        statement = (
+            select(func.count(func.distinct(Pokemon.id)))
+            .select_from(PokemonChunkEmbedding)
+            .join(EmbeddingModel)
+            .join(PokemonKnowledgeChunk)
+            .join(PokemonKnowledgeDocument)
+            .join(Pokemon)
+            .where(
+                PokemonChunkEmbedding.embedding_model_id == embedding_model_id,
+                EmbeddingModel.id == embedding_model_id,
+                EmbeddingModel.is_active.is_(True),
+                EmbeddingModel.normalize_embeddings.is_(True),
+                PokemonChunkEmbedding.status == "ready",
+                PokemonChunkEmbedding.embedding.is_not(None),
+                PokemonChunkEmbedding.content_hash == PokemonKnowledgeChunk.content_hash,
+                PokemonKnowledgeChunk.is_current.is_(True),
+                PokemonKnowledgeChunk.status == "ready",
+                PokemonKnowledgeDocument.is_current.is_(True),
+                PokemonKnowledgeDocument.status == "ready",
+                Pokemon.is_active.is_(True),
+            )
+        )
+        return int(self.session.scalar(statement) or 0)
 
     def ensure_model(
         self,
@@ -215,15 +264,23 @@ class VectorRepository:
                 PokemonKnowledgeDocument.id,
                 PokemonKnowledgeChunk.id,
                 PokemonKnowledgeDocument.source_key,
+                PokemonKnowledgeDocument.document_kind,
+                PokemonKnowledgeDocument.language_code,
                 PokemonKnowledgeChunk.content,
+                PokemonKnowledgeChunk.content_hash,
                 (1.0 - distance).label("semantic_score"),
             )
             .select_from(PokemonChunkEmbedding)
+            .join(EmbeddingModel)
             .join(PokemonKnowledgeChunk)
             .join(PokemonKnowledgeDocument)
             .join(Pokemon)
             .where(
                 PokemonChunkEmbedding.embedding_model_id == embedding_model_id,
+                EmbeddingModel.id == embedding_model_id,
+                EmbeddingModel.is_active.is_(True),
+                EmbeddingModel.dimensions == 384,
+                EmbeddingModel.normalize_embeddings.is_(True),
                 PokemonChunkEmbedding.status == "ready",
                 PokemonChunkEmbedding.embedding.is_not(None),
                 PokemonChunkEmbedding.content_hash == PokemonKnowledgeChunk.content_hash,
@@ -243,8 +300,11 @@ class VectorRepository:
                 document_id=row[1],
                 chunk_id=row[2],
                 source_key=row[3],
-                content=row[4],
-                semantic_score=float(row[5]),
+                document_kind=row[4],
+                language_code=row[5],
+                content=row[6],
+                content_hash=row[7],
+                semantic_score=float(row[8]),
             )
             for rank, row in enumerate(self.session.execute(statement), start=1)
         ]
