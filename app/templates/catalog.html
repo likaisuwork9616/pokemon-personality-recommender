@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="搜尋並篩選寶可夢圖鑑資料。">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/catalog.js" defer></script>
+</head>
+<body data-page="catalog">
+  <a class="skip-link" href="#catalog-results">跳到圖鑑結果</a>
+
+  <header class="site-header">
+    <a class="brand" href="/pokemon" aria-label="寶可夢圖鑑首頁">
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <span>
+        <strong>POKÉDEX</strong>
+        <small>人格推薦系統</small>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="主要導覽">
+      <a href="/pokemon" aria-current="page">圖鑑</a>
+      <a href="/docs">API 文件</a>
+    </nav>
+  </header>
+
+  <main class="page-shell">
+    <section class="page-heading" aria-labelledby="catalog-title">
+      <div>
+        <p class="eyebrow">DATABASE / 001–1025</p>
+        <h1 id="catalog-title">寶可夢圖鑑</h1>
+      </div>
+      <p>依名稱、屬性、世代與稀有分類快速查找。</p>
+    </section>
+
+    <section class="filter-panel" aria-label="圖鑑搜尋與篩選">
+      <form id="catalog-filters" class="filter-form" role="search">
+        <label class="field field-search">
+          <span>名稱</span>
+          <span class="input-shell">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+              <path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <input id="catalog-search" name="q" type="search" autocomplete="off" placeholder="中文或英文名稱">
+          </span>
+        </label>
+
+        <label class="field">
+          <span>屬性</span>
+          <select id="catalog-type" name="type">
+            <option value="">全部屬性</option>
+            <option value="normal">一般</option>
+            <option value="fire">火</option>
+            <option value="water">水</option>
+            <option value="electric">電</option>
+            <option value="grass">草</option>
+            <option value="ice">冰</option>
+            <option value="fighting">格鬥</option>
+            <option value="poison">毒</option>
+            <option value="ground">地面</option>
+            <option value="flying">飛行</option>
+            <option value="psychic">超能力</option>
+            <option value="bug">蟲</option>
+            <option value="rock">岩石</option>
+            <option value="ghost">幽靈</option>
+            <option value="dragon">龍</option>
+            <option value="dark">惡</option>
+            <option value="steel">鋼</option>
+            <option value="fairy">妖精</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>世代</span>
+          <select id="catalog-generation" name="generation">
+            <option value="">全部世代</option>
+            <option value="1">第一世代</option>
+            <option value="2">第二世代</option>
+            <option value="3">第三世代</option>
+            <option value="4">第四世代</option>
+            <option value="5">第五世代</option>
+            <option value="6">第六世代</option>
+            <option value="7">第七世代</option>
+            <option value="8">第八世代</option>
+            <option value="9">第九世代</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>分類</span>
+          <select id="catalog-rarity" name="rarity">
+            <option value="">全部分類</option>
+            <option value="legendary">傳說寶可夢</option>
+            <option value="mythical">幻之寶可夢</option>
+          </select>
+        </label>
+
+        <div class="filter-actions">
+          <button class="button button-primary" type="submit">套用篩選</button>
+          <button class="button button-quiet" id="catalog-reset" type="button">清除</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="catalog-results" class="results-section" aria-labelledby="results-title" tabindex="-1">
+      <div class="results-header">
+        <div>
+          <p class="eyebrow">SEARCH RESULT</p>
+          <h2 id="results-title">圖鑑資料</h2>
+        </div>
+        <p id="catalog-status" class="result-count" role="status" aria-live="polite">正在載入…</p>
+      </div>
+
+      <div id="catalog-grid" class="pokemon-grid" aria-live="polite" aria-busy="true"></div>
+
+      <div id="catalog-empty" class="state-panel" hidden>
+        <span class="state-icon" aria-hidden="true">?</span>
+        <h3>找不到符合條件的寶可夢</h3>
+        <p>試著縮短名稱，或清除部分篩選條件。</p>
+        <button class="button button-primary" id="empty-reset" type="button">查看全部</button>
+      </div>
+
+      <div id="catalog-error" class="state-panel state-error" role="alert" hidden>
+        <span class="state-icon" aria-hidden="true">!</span>
+        <h3>圖鑑資料暫時無法載入</h3>
+        <p id="catalog-error-message">請稍後再試。</p>
+        <button class="button button-primary" id="catalog-retry" type="button">重新載入</button>
+      </div>
+
+      <nav id="catalog-pagination" class="pagination" aria-label="圖鑑分頁" hidden>
+        <button class="page-step" id="page-previous" type="button" aria-label="上一頁">← <span>上一頁</span></button>
+        <div id="page-numbers" class="page-numbers"></div>
+        <button class="page-step" id="page-next" type="button" aria-label="下一頁"><span>下一頁</span> →</button>
+      </nav>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Pokémon Personality Recommender</span>
+    <span>資料由 PostgreSQL 圖鑑提供</span>
+  </footer>
+</body>
+</html>

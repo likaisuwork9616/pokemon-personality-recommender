@@ -2,8 +2,11 @@ from contextlib import asynccontextmanager
 from typing import Any, Callable
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from app.api.catalog import router as catalog_router
 from app.api.v1 import create_recommendation, router as v1_router
 from app.schemas import RecommendationResponse
+from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
 
@@ -29,6 +32,9 @@ def create_app(engine_factory: EngineFactory | None = None) -> FastAPI:
         application.state.recommendation_engine = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格與語意證據推薦 Top 3 寶可夢。", version="2.1.0", lifespan=lifespan)
     application.include_router(v1_router)
+    application.include_router(catalog_router)
+    application.include_router(web_router)
+    application.mount("/static", StaticFiles(directory="app/static"), name="static")
     @application.get("/health/live", tags=["health"])
     async def live() -> dict[str, str]: return {"status": "ok"}
     @application.get("/health/ready", tags=["health"])

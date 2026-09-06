@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看寶可夢完整圖鑑資料。">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="/static/js/catalog.js" defer></script>
+</head>
+<body data-page="detail" data-pokemon-id="{{ pokemon_id }}">
+  <a class="skip-link" href="#pokemon-detail">跳到寶可夢資料</a>
+
+  <header class="site-header">
+    <a class="brand" href="/pokemon" aria-label="寶可夢圖鑑首頁">
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <span>
+        <strong>POKÉDEX</strong>
+        <small>人格推薦系統</small>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="主要導覽">
+      <a href="/pokemon" aria-current="page">圖鑑</a>
+      <a href="/docs">API 文件</a>
+    </nav>
+  </header>
+
+  <main id="pokemon-detail" class="page-shell detail-shell" tabindex="-1">
+    <a class="back-link" href="/pokemon">← 返回圖鑑</a>
+
+    <div id="detail-loading" class="detail-loading" role="status">
+      <div class="detail-visual skeleton"></div>
+      <div class="detail-loading-copy">
+        <span class="skeleton skeleton-line skeleton-short"></span>
+        <span class="skeleton skeleton-line skeleton-title"></span>
+        <span class="skeleton skeleton-line"></span>
+        <span class="skeleton skeleton-line"></span>
+      </div>
+      <span class="sr-only">正在載入寶可夢資料</span>
+    </div>
+
+    <article id="detail-content" hidden>
+      <section class="detail-hero">
+        <div class="detail-visual">
+          <span id="detail-image-placeholder" class="image-placeholder" aria-hidden="true">?</span>
+          <img id="detail-image" alt="" hidden>
+        </div>
+        <div class="detail-heading">
+          <p id="detail-number" class="dex-number">#0000</p>
+          <h1 id="detail-name">—</h1>
+          <p id="detail-name-en" class="english-name">—</p>
+          <div id="detail-types" class="type-list" aria-label="屬性"></div>
+          <div id="detail-badges" class="badge-list"></div>
+          <p id="detail-category" class="detail-summary"></p>
+        </div>
+      </section>
+
+      <div class="detail-layout">
+        <section class="detail-section" aria-labelledby="description-title">
+          <div class="section-title-row">
+            <p class="eyebrow">ARCHIVE NOTES</p>
+            <h2 id="description-title">圖鑑敘述</h2>
+          </div>
+          <div id="detail-descriptions" class="description-list"></div>
+        </section>
+
+        <aside class="detail-section profile-section" aria-labelledby="profile-title">
+          <div class="section-title-row">
+            <p class="eyebrow">PROFILE</p>
+            <h2 id="profile-title">基本資料</h2>
+          </div>
+          <dl id="detail-profile" class="profile-list"></dl>
+        </aside>
+      </div>
+
+      <section class="detail-section stats-section" aria-labelledby="stats-title">
+        <div class="section-title-row">
+          <p class="eyebrow">BASE STATS</p>
+          <h2 id="stats-title">能力數值</h2>
+        </div>
+        <div id="detail-stats" class="stats-grid"></div>
+      </section>
+    </article>
+
+    <div id="detail-error" class="state-panel state-error detail-error" role="alert" hidden>
+      <span class="state-icon" aria-hidden="true">!</span>
+      <h1>找不到這筆寶可夢資料</h1>
+      <p id="detail-error-message">資料可能已停用，或網址不正確。</p>
+      <a class="button button-primary" href="/pokemon">返回圖鑑</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <span>Pokémon Personality Recommender</span>
+    <span>資料由 PostgreSQL 圖鑑提供</span>
+  </footer>
+</body>
+</html>
