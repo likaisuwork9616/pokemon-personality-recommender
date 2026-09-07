@@ -3,7 +3,7 @@
 # =====================
 
 import os  # 用來處理檔案路徑與讀取環境變數，避免路徑寫死
-from typing import Dict, List, Any  # 用來標註函式輸入/輸出型態，讓程式更好讀
+from typing import Any, Dict, List, Mapping, Sequence  # 型態標註，讓程式更好讀
 
 import jieba  # 中文斷詞：把中文句子拆成詞，讓人格關鍵字比對更準
 import numpy as np  # 向量與數學運算：人格向量、正規化、分數計算
@@ -64,18 +64,6 @@ client = OpenAI(api_key=API_KEY) if API_KEY else None
 
 
 # =====================
-# 🧠 16 型人格維度
-# =====================
-
-TRAITS = [
-    "熱情領導者", "衝動冒險者", "社交魅力型", "行動派",
-    "冷靜分析師", "策略規劃者", "理性觀察者", "系統思考者",
-    "溫柔照顧者", "情感共鳴者", "忠誠守護者", "同理心強者",
-    "孤獨思考者", "矛盾內省者", "敏感創作者", "觀察型人格",
-]
-
-
-# =====================
 # 🧬 寶可夢屬性 → 人格權重
 # =====================
 
@@ -108,30 +96,6 @@ EN_TYPE_TO_ZH = {
 }
 
 
-# =====================
-# 🧠 使用者文字關鍵字 → 人格向量
-# =====================
-
-EMOTION_KEYWORDS = {
-    "熱情領導者": ["領導", "主動", "自信", "帶領", "掌控", "熱血", "leader", "confident", "active"],
-    "衝動冒險者": ["衝動", "冒險", "刺激", "勇敢", "不怕", "挑戰", "adventure", "brave", "challenge"],
-    "社交魅力型": ["社交", "外向", "聊天", "分享", "交流", "人氣", "吸引", "人群", "朋友", "social", "chat", "popular"],
-    "行動派": ["行動", "快速", "執行", "效率", "做事", "立即", "運動", "action", "fast", "efficient"],
-    "冷靜分析師": ["冷靜", "理性", "分析", "思考", "邏輯", "判斷", "calm", "logical", "analysis"],
-    "策略規劃者": ["計畫", "策略", "規劃", "安排", "設計", "佈局", "plan", "strategy", "design"],
-    "理性觀察者": ["觀察", "客觀", "理解", "看清", "判斷", "研究", "observe", "objective", "research"],
-    "系統思考者": ["系統", "結構", "整體", "流程", "架構", "模型", "程式", "system", "structure", "programming"],
-    "溫柔照顧者": ["溫柔", "照顧", "體貼", "關心", "保護", "善良", "gentle", "care", "kind"],
-    "情感共鳴者": ["共感", "情緒", "感受", "同理", "理解別人", "敏感", "emotion", "empathy", "sensitive"],
-    "忠誠守護者": ["忠誠", "承諾", "守護", "保護", "堅持", "可靠", "信任", "責任感", "loyal", "protect", "trust"],
-    "同理心強者": ["同理", "理解", "包容", "接受", "寬容", "支持", "empathy", "support", "accept"],
-    "孤獨思考者": ["孤獨", "獨處", "安靜", "沉思", "內向", "慢熟", "一個人", "個人空間", "睡覺", "alone", "quiet", "introvert"],
-    "矛盾內省者": ["矛盾", "糾結", "內心", "掙扎", "思考自己", "自我懷疑", "conflict", "struggle", "introspective"],
-    "敏感創作者": ["敏感", "創作", "想像", "靈感", "藝術", "情緒化", "畫畫", "音樂", "creative", "art", "music"],
-    "觀察型人格": ["觀察", "安靜", "看著", "記錄", "理解世界", "旁觀", "observe", "record", "watch"],
-}
-
-
 class PokemonRecommender:
     """
     類別用途：
@@ -150,11 +114,26 @@ class PokemonRecommender:
         path: str = FILE_PATH,
         dataframe: pd.DataFrame | None = None,
         pokemon_embeddings: np.ndarray | None = None,
+        *,
+        personality_traits: Sequence[str] | None = None,
+        persona_keywords: Mapping[str, Sequence[str]] | None = None,
     ):
         """
         函式用途：
         初始化推薦系統，只在程式啟動時跑一次。
         """
+
+        if personality_traits is None or persona_keywords is None:
+            raise ValueError("PostgreSQL personality catalog is required")
+        self.traits = tuple(str(trait) for trait in personality_traits)
+        self.persona_keywords = {
+            str(trait): tuple(str(keyword) for keyword in keywords)
+            for trait, keywords in persona_keywords.items()
+        }
+        if len(self.traits) != 16 or set(self.persona_keywords) != set(self.traits):
+            raise ValueError("personality catalog must define all 16 ordered traits")
+        if any(not self.persona_keywords[trait] for trait in self.traits):
+            raise ValueError("every personality trait requires at least one keyword")
 
         if dataframe is None:
             print("Loading Pokemon data:", path)
@@ -290,12 +269,12 @@ class PokemonRecommender:
         """
 
         text = str(text)
-        vec = np.zeros(len(TRAITS))
+        vec = np.zeros(len(self.traits))
         words = set(self.tokenize(text))
         lower_text = text.lower()
 
-        for i, trait in enumerate(TRAITS):
-            for keyword in EMOTION_KEYWORDS[trait]:
+        for i, trait in enumerate(self.traits):
+            for keyword in self.persona_keywords[trait]:
                 kw = keyword.lower()
                 if keyword in text or keyword in words or kw in lower_text:
                     vec[i] += 2.0
@@ -317,7 +296,7 @@ class PokemonRecommender:
         vectors = []
 
         for _, row in self.df.iterrows():
-            vec = np.zeros(len(TRAITS))
+            vec = np.zeros(len(self.traits))
 
             for poke_type in self.parse_types(row):
                 if poke_type in TYPE_MAP:
@@ -395,7 +374,7 @@ class PokemonRecommender:
         """
 
         idxs = np.argsort(-vec)[:top_n]
-        return [TRAITS[i] for i in idxs if vec[i] > 0]
+        return [self.traits[i] for i in idxs if vec[i] > 0]
 
     def build_matching_evidence(self, row: pd.Series, pokemon_traits: List[str]) -> List[Dict]:
         """建立可直接顯示、且能追溯到 CSV 來源欄位的匹配證據。"""

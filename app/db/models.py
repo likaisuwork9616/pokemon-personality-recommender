@@ -33,6 +33,81 @@ from pgvector.sqlalchemy import Vector
 from app.db.base import Base
 
 
+class PersonalityTrait(Base):
+    """Ordered personality dimension configured in PostgreSQL."""
+
+    __tablename__ = "personality_traits"
+    __table_args__ = (
+        UniqueConstraint("name_zh", name="uq_personality_traits_name_zh"),
+        UniqueConstraint("vector_index", name="uq_personality_traits_vector_index"),
+        CheckConstraint("length(trim(code)) > 0", name="code_not_blank"),
+        CheckConstraint("length(trim(name_zh)) > 0", name="name_zh_not_blank"),
+        CheckConstraint("vector_index BETWEEN 0 AND 15", name="vector_index_range"),
+    )
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    name_zh: Mapped[str] = mapped_column(String(40), nullable=False)
+    vector_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+
+    synonyms: Mapped[list[PersonalityTraitSynonym]] = relationship(
+        back_populates="trait",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class PersonalityTraitSynonym(Base):
+    """Search term and weight used by SQL personality matching."""
+
+    __tablename__ = "personality_trait_synonyms"
+    __table_args__ = (
+        CheckConstraint("length(trim(term)) > 0", name="term_not_blank"),
+        CheckConstraint(
+            "length(trim(language_code)) > 0",
+            name="language_code_not_blank",
+        ),
+        CheckConstraint("weight > 0 AND weight <= 5", name="weight_range"),
+        Index("ix_personality_synonyms_active_term", "is_active", "term"),
+    )
+
+    trait_code: Mapped[str] = mapped_column(
+        String(40),
+        ForeignKey(
+            "personality_traits.code",
+            name="fk_personality_synonym_trait",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    term: Mapped[str] = mapped_column(String(80), primary_key=True)
+    language_code: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default="zh-Hant",
+        server_default=text("'zh-Hant'"),
+    )
+    weight: Mapped[float] = mapped_column(
+        Double,
+        nullable=False,
+        default=2.0,
+        server_default=text("2.0"),
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+
+    trait: Mapped[PersonalityTrait] = relationship(back_populates="synonyms")
+
+
 class Pokemon(Base):
     """One Pokémon species or form exposed by the catalog."""
 

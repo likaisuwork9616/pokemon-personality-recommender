@@ -2,6 +2,7 @@
 
 from app.repositories.admin import AdminPokemonRepository
 from app.repositories.pokemon import PokemonRepository
+from app.repositories.personality import PersonalityCatalog, PersonalityRepository
 from app.repositories.retrieval import LexicalSearchHit, RetrievalRepository
 from app.repositories.reindex import (
     IndexSourceState,
@@ -21,6 +22,8 @@ __all__ = [
     "IndexSourceState",
     "PokemonIndexState",
     "PokemonRepository",
+    "PersonalityCatalog",
+    "PersonalityRepository",
     "PokemonReindexRepository",
     "RetrievalRepository",
     "VectorRepository",

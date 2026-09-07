@@ -24,7 +24,11 @@ def _default_engine_factory() -> Any:
     import pandas as pd
 
     from app.db.session import get_session_factory
-    from app.repositories import PokemonRepository, VectorRepository
+    from app.repositories import (
+        PersonalityRepository,
+        PokemonRepository,
+        VectorRepository,
+    )
     from pokedex_online import PokemonRecommender
 
     session_factory = get_session_factory()
@@ -35,6 +39,7 @@ def _default_engine_factory() -> Any:
 
     records = load_profile_records()
     with session_factory() as session:
+        personality_catalog = PersonalityRepository(session).catalog()
         vector_repository = VectorRepository(session)
         active_model = vector_repository.active_model()
         ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
@@ -58,6 +63,8 @@ def _default_engine_factory() -> Any:
     profile_engine = PokemonRecommender(
         dataframe=pd.DataFrame.from_records(records),
         pokemon_embeddings=np.zeros((len(records), 384), dtype=float),
+        personality_traits=personality_catalog.trait_names,
+        persona_keywords=personality_catalog.synonyms_by_trait,
     )
     return HybridRecommendationEngine(
         profile_engine=profile_engine,
