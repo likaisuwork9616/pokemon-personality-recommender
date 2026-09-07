@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from uuid import uuid4
 
 import numpy as np
@@ -299,6 +300,48 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertEqual([item["database_id"] for item in results], [1, 2, 4])
         self.assertEqual(results[-1]["name"], "新加入的寶可夢")
         self.assertEqual(len(loader_calls), 1)
+
+    def test_personality_catalog_refresh_rebuilds_profile_vectors_atomically(self):
+        engine, original, _sessions, _retriever = self._engine([])
+        traits = tuple(f"新特質{index}" for index in range(16))
+        catalog = SimpleNamespace(
+            trait_names=traits,
+            synonyms_by_trait={trait: (f"詞{index}",) for index, trait in enumerate(traits)},
+        )
+
+        count = engine.refresh_personality_catalog(catalog)
+
+        self.assertEqual(count, 16)
+        self.assertIsNot(engine.profile_engine, original)
+        self.assertEqual(engine.profile_engine.traits, traits)
+        self.assertEqual(engine.profile_engine.persona_keywords[traits[3]], ["詞3"])
+        self.assertEqual(engine.profile_engine.persona_vectors.shape, (3, 16))
+
+    def test_changed_database_revision_self_refreshes_before_scoring(self):
+        traits = tuple(f"跨程序特質{index}" for index in range(16))
+
+        class VersionedPersonality(_PersonalityRepository):
+            @staticmethod
+            def revision():
+                return 2
+
+            @staticmethod
+            def catalog():
+                return SimpleNamespace(
+                    trait_names=traits,
+                    synonyms_by_trait={trait: (f"詞{index}",) for index, trait in enumerate(traits)},
+                )
+
+        engine, _profile, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)],
+            personality_repository=VersionedPersonality(),
+        )
+        engine._personality_revision = 1
+
+        engine.recommend("安靜守護夥伴")
+
+        self.assertEqual(engine._personality_revision, 2)
+        self.assertEqual(engine.profile_engine.traits, traits)
 
 
 if __name__ == "__main__":

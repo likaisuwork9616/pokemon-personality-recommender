@@ -24,6 +24,8 @@
 - 預設不永久保存使用者原始描述與 query vector
 - 提供圖鑑列表、中英文名稱搜尋、分頁、屬性、世代、傳說與幻之篩選
 - 提供單一管理員後台，可新增、查看、修改、停用及恢復寶可夢
+- 提供人格詞庫管理介面，可修改 16 維特質名稱，新增、編輯、加權、停用與恢復中英文同義詞
+- 詞彙以 NFKC／case-fold 正規化防止重複加權，revision 讓多個 API process 在下次推薦前自動刷新人格向量
 - 修改敘述後建立新版文件，透過 PostgreSQL 背景佇列重建 embedding，支援即時進度、失敗重試與安全切換
 - 1,025 筆寶可夢關聯資料存入 PostgreSQL
 - 384 維知識 chunk embeddings 存入 pgvector
@@ -234,6 +236,8 @@ docker compose down
 | `POST` | `/api/v1/admin/session` | 管理員登入 |
 | `GET/POST/PATCH` | `/api/v1/admin/pokemon...` | 管理資料、狀態與排程重建索引 |
 | `GET` | `/api/v1/admin/reindex-jobs/{job_id}` | 讀取背景 reindex 進度與結果 |
+| `GET/PATCH` | `/api/v1/admin/personality/traits...` | 管理固定 16 維人格特質名稱 |
+| `POST/PATCH` | `/api/v1/admin/personality/traits/{code}/synonyms...` | 新增、修改、加權、停用或恢復同義詞 |
 | `GET` | `/health/live` | 程序存活檢查 |
 | `GET` | `/health/ready` | DB、pgvector 與推薦引擎就緒檢查 |
 
@@ -456,6 +460,7 @@ python -m unittest discover -s tests -v
 - pgvector embedding 狀態與 exact search
 - jieba／FTS、RRF 與候選聚合
 - 人格 SQL 字典、同義詞與分數
+- 人格詞庫管理、正規化唯一性、跨 process revision refresh 與最後啟用詞保護
 - Top 3 穩定排序、證據與 response schema
 - 查詢隱私與例外路徑
 - Grounded RAG、provider 切換、prompt injection 與 fallback
@@ -522,7 +527,7 @@ python scripts/evaluate_recommendations.py --min-recall 0.50 --min-hit-rate 0.60
 後續可擴充：
 
 - 公開環境部署、HTTPS 與自動化 CI/CD
-- 更完整的人格詞庫管理介面
+- 人格詞庫變更審核、操作歷程與角色權限分級
 
 ## 免責聲明
 

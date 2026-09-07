@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 
-from app.api.admin import get_admin_repository, get_reindex_job_repository, get_reindex_service
+from app.api.admin import get_admin_personality_repository, get_admin_repository, get_reindex_job_repository, get_reindex_service
 from app.main import create_app
 from app.repositories import AdminPokemonRepository
 from app.repositories.reindex import IndexSourceState, PokemonIndexState
@@ -276,12 +276,64 @@ class FakeReindexJobRepository:
     def get(self, job_id):
         return self.jobs.get(job_id)
 
+
+class FakePersonalityRepository:
+    def __init__(self) -> None:
+        self.session = FakeSession()
+        self.trait = namespace(
+            code="loyal_guardian", name_zh="忠誠守護者", vector_index=10, is_active=True,
+            synonyms=[namespace(term="承諾", language_code="zh-Hant", weight=2.0, is_active=True)],
+        )
+        self.current_revision = 1
+
+    def list_traits(self):
+        return [self.trait]
+
+    def catalog(self):
+        return namespace(
+            trait_names=tuple(f"特質{index}" for index in range(16)),
+            synonyms_by_trait={f"特質{index}": (f"詞{index}",) for index in range(16)},
+        )
+
+    def revision(self):
+        return self.current_revision
+
+    def bump_revision(self):
+        self.current_revision += 1
+        return self.current_revision
+
+    def get_trait(self, code):
+        return self.trait if code == self.trait.code else None
+
+    def rename_trait(self, trait, name_zh):
+        trait.name_zh = name_zh
+        return trait
+
+    def add_synonym(self, trait, **values):
+        item = namespace(**values)
+        trait.synonyms.append(item)
+        return item
+
+    def get_synonym(self, trait_code, term):
+        if trait_code != self.trait.code:
+            return None
+        return next((item for item in self.trait.synonyms if item.term == term), None)
+
+    def update_synonym(self, item, **values):
+        for key, value in values.items():
+            setattr(item, key, value)
+        return item
+
 class RefreshingEngine:
     def __init__(self) -> None:
         self.refresh_calls = 0
+        self.personality_refresh_calls = 0
 
     def refresh_profiles(self):
         self.refresh_calls += 1
+
+    def refresh_personality_catalog(self, _catalog, *, revision=None):
+        self.personality_refresh_calls += 1
 
 
 class AdminApiTests(unittest.TestCase):
@@ -289,6 +341,7 @@ class AdminApiTests(unittest.TestCase):
         self.repository = FakeAdminRepository()
         self.reindex_service = FakeReindexService()
         self.reindex_jobs = FakeReindexJobRepository()
+        self.personality_repository = FakePersonalityRepository()
         self.runtime_engine = RefreshingEngine()
         self.auth = AdminAuth(
             AdminAuthConfig(
@@ -310,6 +363,9 @@ class AdminApiTests(unittest.TestCase):
         )
         self.application.dependency_overrides[get_reindex_job_repository] = (
             lambda: self.reindex_jobs
+        )
+        self.application.dependency_overrides[get_admin_personality_repository] = (
+            lambda: self.personality_repository
         )
         self.context = TestClient(self.application)
         self.client = self.context.__enter__()
@@ -483,6 +539,7 @@ class AdminApiTests(unittest.TestCase):
         page = self.client.get("/admin")
         self.assertEqual(page.status_code, 200)
         self.assertIn('id="admin-login-form"', page.text)
+        self.assertIn('id="vocabulary-synonym-form"', page.text)
         self.assertIn('/static/js/admin.js', page.text)
 
         paths = self.application.openapi()["paths"]
@@ -490,6 +547,60 @@ class AdminApiTests(unittest.TestCase):
         self.assertIn("/api/v1/admin/pokemon/{pokemon_id}", paths)
         self.assertIn("/api/v1/admin/pokemon/{pokemon_id}/reindex", paths)
         self.assertIn("/api/v1/admin/reindex-jobs/{job_id}", paths)
+        self.assertIn("/api/v1/admin/personality/traits", paths)
+
+    def test_personality_vocabulary_crud_is_authenticated_and_csrf_protected(self):
+        self.assertEqual(self.client.get("/api/v1/admin/personality/traits").status_code, 401)
+        csrf, _set_cookie = self.login()
+        headers = {"X-CSRF-Token": csrf}
+
+        listing = self.client.get("/api/v1/admin/personality/traits")
+        self.assertEqual(listing.status_code, 200)
+        self.assertEqual(listing.json()[0]["synonyms"][0]["term"], "承諾")
+
+        denied = self.client.post(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            json={"term": "守約"},
+        )
+        self.assertEqual(denied.status_code, 403)
+        created = self.client.post(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"term": "守約", "language_code": "zh-Hant", "weight": 2.5},
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["weight"], 2.5)
+
+        updated = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"original_term": "守約", "weight": 3.0, "is_active": False},
+        )
+        self.assertEqual(updated.status_code, 200)
+        self.assertFalse(updated.json()["is_active"])
+
+        slash = self.client.post(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"term": "care/share", "language_code": "en", "weight": 1.5},
+        )
+        self.assertEqual(slash.status_code, 201)
+        slash_updated = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"original_term": "care/share", "weight": 2.0},
+        )
+        self.assertEqual(slash_updated.status_code, 200)
+        self.assertEqual(slash_updated.json()["term"], "care/share")
+
+        null_update = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"original_term": "care/share", "weight": None},
+        )
+        self.assertEqual(null_update.status_code, 422)
+        self.assertEqual(self.personality_repository.session.commits, 4)
+        self.assertEqual(self.runtime_engine.personality_refresh_calls, 4)
 
 
 class AdminSchemaTests(unittest.TestCase):

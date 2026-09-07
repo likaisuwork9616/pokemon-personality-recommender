@@ -38,6 +38,7 @@ class HybridRecommendationEngine:
         personality_repository_factory: Callable[[Any], Any] | None = None,
         explanation_service: GroundedExplanationService | None = None,
         profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
+        personality_revision: int | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -55,6 +56,7 @@ class HybridRecommendationEngine:
         self._encode_lock = Lock()
         self._profile_refresh_lock = Lock()
         self._profile_records_loader = profile_records_loader
+        self._personality_revision = personality_revision
 
         database_ids = self._database_id_map(profile_engine)
         self._profile_state = (profile_engine, database_ids)
@@ -91,6 +93,38 @@ class HybridRecommendationEngine:
             self._profile_state = (refreshed, database_ids)
             return len(records)
 
+    def refresh_personality_catalog(self, catalog: Any, *, revision: int | None = None) -> int:
+        """Atomically rebuild profile vectors after vocabulary administration."""
+
+        with self._profile_refresh_lock:
+            if revision is not None and revision == self._personality_revision:
+                return len(catalog.trait_names)
+            current, database_ids = self._profile_state
+            refreshed = copy(current)
+            refreshed.traits = tuple(catalog.trait_names)
+            refreshed.persona_keywords = {
+                trait: list(catalog.synonyms_by_trait[trait])
+                for trait in refreshed.traits
+            }
+            refreshed.persona_vectors = refreshed.build_persona_vectors()
+            self.profile_engine = refreshed
+            self._profile_state = (refreshed, database_ids)
+            if revision is not None:
+                self._personality_revision = revision
+            return len(refreshed.traits)
+
+    def _refresh_personality_if_stale(self, repository: Any) -> None:
+        revision_reader = getattr(repository, "revision", None)
+        catalog_reader = getattr(repository, "catalog", None)
+        if not callable(revision_reader) or not callable(catalog_reader):
+            return
+        revision = int(revision_reader())
+        if self._personality_revision is None:
+            self._personality_revision = revision
+            return
+        if revision != self._personality_revision:
+            self.refresh_personality_catalog(catalog_reader(), revision=revision)
+
     def recommend(self, user_text: str, top_k: int = 3) -> list[dict[str, Any]]:
         text = str(user_text).strip()
         if not text:
@@ -125,8 +159,11 @@ class HybridRecommendationEngine:
                     pokemon_limit=50,
                 )
                 try:
+                    personality_repository = self._personality_repository_factory(session)
+                    self._refresh_personality_if_stale(personality_repository)
+                    profile_engine, row_index_by_database_id = self._profile_state
                     user_persona = np.asarray(
-                        self._personality_repository_factory(session).vector_for_text(text),
+                        personality_repository.vector_for_text(text),
                         dtype=float,
                     )
                     if user_persona.shape != (16,) or not np.isfinite(user_persona).all():
