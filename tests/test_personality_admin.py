@@ -59,6 +59,44 @@ class PersonalityAdministrationTests(unittest.TestCase):
         self.assertEqual(display, "RELIABLE")
         self.assertEqual(normalized, "reliable")
 
+        spaced_display, spaced_normalized = AdminPersonalityRepository.normalize_term(
+            "  慢熟　 觀察  "
+        )
+        self.assertEqual(spaced_display, "慢熟 觀察")
+        self.assertEqual(spaced_normalized, "慢熟 觀察")
+
+    def test_normalization_revalidates_length_and_rejects_controls(self):
+        for invalid in ("守\u200b護", "守\n護", "ß" * 80):
+            with self.subTest(invalid=repr(invalid)):
+                with self.assertRaises(ValueError):
+                    AdminPersonalityRepository.normalize_term(invalid)
+
+    def test_semantic_noops_do_not_mutate_models(self):
+        repository = AdminPersonalityRepository(_Session(active_count=2))
+        trait = SimpleNamespace(name_zh="Guardian")
+        synonym = SimpleNamespace(
+            trait_code="loyal_guardian",
+            term="Reliable",
+            normalized_term="reliable",
+            language_code="en",
+            weight=2.0,
+            is_active=True,
+        )
+
+        renamed = repository.rename_trait(trait, "ＧＵＡＲＤＩＡＮ")
+        updated = repository.update_synonym(
+            synonym,
+            term="ＲＥＬＩＡＢＬＥ",
+            language_code="en",
+            weight=2.0,
+            is_active=True,
+        )
+
+        self.assertFalse(renamed)
+        self.assertFalse(updated)
+        self.assertEqual(trait.name_zh, "Guardian")
+        self.assertEqual(synonym.term, "Reliable")
+
 
 if __name__ == "__main__":
     unittest.main()

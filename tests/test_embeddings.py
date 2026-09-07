@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
-import numpy as np
 import pandas as pd
 from sqlalchemy.dialects import postgresql
 
@@ -17,7 +16,7 @@ from app.repositories.vector import (
     VectorSearchConfig,
 )
 from app.services.embedding import EmbeddingConfig, EmbeddingService
-from pokedex_online import PokemonRecommender
+from app.services.personality_profile import PokemonPersonalityProfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,7 +117,7 @@ class EmbeddingServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "384"):
             EmbeddingConfig(dimensions=3)
 
-    def test_supplied_database_vectors_skip_full_corpus_encoding(self):
+    def test_database_profile_does_not_build_an_in_memory_corpus_embedding(self):
         row = {
             "pokedex_number": 1,
             "name_zh": "妙蛙種子",
@@ -130,16 +129,14 @@ class EmbeddingServiceTests(unittest.TestCase):
             "image_url": "https://example.test/1.png",
         }
         with (
-            patch.object(PokemonRecommender, "_load_sentence_model", return_value=object()),
             patch.object(
-                PokemonRecommender,
-                "build_embeddings",
-                side_effect=AssertionError("must not encode the corpus"),
+                PokemonPersonalityProfile,
+                "_load_sentence_model",
+                return_value=object(),
             ),
         ):
-            recommender = PokemonRecommender(
+            profile = PokemonPersonalityProfile(
                 dataframe=pd.DataFrame([row]),
-                pokemon_embeddings=np.ones((1, 384)),
                 personality_traits=tuple(f"特質{index}" for index in range(16)),
                 persona_keywords={
                     f"特質{index}": (f"關鍵字{index}",)
@@ -147,7 +144,8 @@ class EmbeddingServiceTests(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(recommender.pokemon_embeddings.shape, (1, 384))
+        self.assertEqual(profile.persona_vectors.shape, (1, 16))
+        self.assertFalse(hasattr(profile, "pokemon_embeddings"))
 
 
 class PgvectorSchemaTests(unittest.TestCase):

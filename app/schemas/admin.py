@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
+from app.personality_vocabulary import normalize_vocabulary_value
 from app.schemas.catalog import PokemonDetail
 
 
@@ -319,9 +320,12 @@ class AdminPersonalityTraitUpdate(BaseModel):
     @field_validator("name_zh")
     @classmethod
     def strip_name(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("人格特質名稱不可為空白。")
-        return value.strip()
+        display, _canonical = normalize_vocabulary_value(
+            value,
+            max_length=40,
+            label="人格特質名稱",
+        )
+        return display
 
 
 class AdminPersonalitySynonymCreate(BaseModel):
@@ -330,11 +334,21 @@ class AdminPersonalitySynonymCreate(BaseModel):
     weight: float = Field(default=2.0, gt=0, le=5)
     is_active: bool = True
 
-    @field_validator("term", "language_code")
+    @field_validator("term")
+    @classmethod
+    def normalize_term(cls, value: str) -> str:
+        display, _canonical = normalize_vocabulary_value(
+            value,
+            max_length=80,
+            label="同義詞",
+        )
+        return display
+
+    @field_validator("language_code")
     @classmethod
     def strip_required(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("同義詞與語言代碼不可為空白。")
+            raise ValueError("語言代碼不可為空白。")
         return value.strip()
 
 
@@ -345,11 +359,23 @@ class AdminPersonalitySynonymUpdate(BaseModel):
     weight: float | None = Field(default=None, gt=0, le=5)
     is_active: bool | None = None
 
-    @field_validator("original_term", "term", "language_code")
+    @field_validator("original_term", "term")
     @classmethod
-    def strip_optional(cls, value: str | None) -> str | None:
+    def normalize_optional_term(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        display, _canonical = normalize_vocabulary_value(
+            value,
+            max_length=80,
+            label="同義詞",
+        )
+        return display
+
+    @field_validator("language_code")
+    @classmethod
+    def strip_optional_language(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
-            raise ValueError("同義詞與語言代碼不可為空白。")
+            raise ValueError("語言代碼不可為空白。")
         return value.strip() if value is not None else None
 
     @model_validator(mode="after")

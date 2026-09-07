@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -50,6 +52,18 @@ from app.services.reindex import (
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["pokemon administration"])
+
+PERSONALITY_REFRESH_PENDING_RESPONSE = {
+    "description": (
+        "資料庫異動已提交；目前程序的人格詞庫快照正在等待 revision-based refresh。"
+    ),
+    "headers": {
+        "X-Personality-Refresh-Status": {
+            "description": "目前程序的人格詞庫快照狀態。",
+            "schema": {"type": "string", "const": "pending"},
+        }
+    },
+}
 
 
 def get_admin_repository(
@@ -284,19 +298,53 @@ def _refresh_runtime_profiles(request: Request) -> None:
         request.app.state.profile_refresh_error = "profile refresh failed"
 
 
-def _refresh_runtime_personality(request: Request, repository: AdminPersonalityRepository) -> None:
+def _record_personality_refresh_failure(request: Request, error_type: str) -> None:
+    metrics = getattr(request.app.state, "request_metrics", None)
+    observe_failure = getattr(metrics, "observe_personality_refresh_failure", None)
+    if callable(observe_failure):
+        observe_failure()
+    logging.getLogger("pokemon.admin").warning(
+        json.dumps(
+            {
+                "event": "personality_refresh_failed",
+                "request_id": getattr(request.state, "request_id", "unavailable"),
+                "error_type": error_type,
+            },
+            separators=(",", ":"),
+        )
+    )
+
+
+def _refresh_runtime_personality(
+    request: Request,
+    repository: AdminPersonalityRepository,
+) -> bool:
     engine = getattr(request.app.state, "recommendation_engine", None)
     refresh = getattr(engine, "refresh_personality_catalog", None)
     if not callable(refresh):
-        return
+        mark_failed = getattr(engine, "mark_personality_refresh_failed", None)
+        if callable(mark_failed):
+            mark_failed()
+        _record_personality_refresh_failure(request, "RefreshUnavailable")
+        return False
     try:
         refresh(repository.catalog(), revision=repository.revision())
-        request.app.state.personality_refresh_error = None
-    except Exception:
-        request.app.state.personality_refresh_error = "personality refresh failed"
+        healthy = bool(getattr(engine, "personality_refresh_healthy", True))
+        if not healthy:
+            _record_personality_refresh_failure(request, "RefreshUnhealthy")
+        return healthy
+    except Exception as exc:
+        mark_failed = getattr(engine, "mark_personality_refresh_failed", None)
+        if callable(mark_failed):
+            mark_failed()
+        _record_personality_refresh_failure(request, type(exc).__name__)
+        return False
 
 
-def _commit_personality(repository: AdminPersonalityRepository, request: Request) -> None:
+def _commit_personality(
+    repository: AdminPersonalityRepository,
+    request: Request,
+) -> bool:
     try:
         repository.bump_revision()
         repository.session.commit()
@@ -306,7 +354,37 @@ def _commit_personality(repository: AdminPersonalityRepository, request: Request
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "personality_conflict", "message": "人格特質名稱或同義詞已存在。"},
         ) from None
-    _refresh_runtime_personality(request, repository)
+    return _refresh_runtime_personality(request, repository)
+
+
+def _set_personality_refresh_response(response: Response, refreshed: bool) -> None:
+    response.headers["X-Personality-Refresh-Status"] = (
+        "ready" if refreshed else "pending"
+    )
+    if not refreshed:
+        # The database transaction is already committed. A 202 response tells
+        # clients not to retry the mutation while the revision-based runtime
+        # refresh remains pending.
+        response.status_code = status.HTTP_202_ACCEPTED
+
+
+def _set_personality_noop_response(request: Request, response: Response) -> None:
+    """Expose current health without refreshing an unchanged vocabulary."""
+
+    engine = getattr(request.app.state, "recommendation_engine", None)
+    healthy = engine is not None and bool(
+        getattr(engine, "personality_refresh_healthy", True)
+    )
+    response.headers["X-Personality-Refresh-Status"] = (
+        "ready" if healthy else "pending"
+    )
+
+
+def _invalid_personality_vocabulary(exc: ValueError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": "invalid_personality_vocabulary", "message": str(exc)},
+    )
 
 
 @router.post("/session", response_model=AdminSessionResponse, summary="管理員登入")
@@ -376,11 +454,13 @@ def list_personality_traits(
 @router.patch(
     "/personality/traits/{trait_code}",
     response_model=AdminPersonalityTrait,
+    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
     summary="修改人格特質名稱",
 )
 def update_personality_trait(
     payload: AdminPersonalityTraitUpdate,
     request: Request,
+    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
@@ -388,8 +468,17 @@ def update_personality_trait(
     trait = repository.get_trait(trait_code)
     if trait is None:
         raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    repository.rename_trait(trait, payload.name_zh)
-    _commit_personality(repository, request)
+    try:
+        changed = repository.rename_trait(trait, payload.name_zh)
+    except ValueError as exc:
+        raise _invalid_personality_vocabulary(exc) from None
+    if not changed:
+        _set_personality_noop_response(request, response)
+        return _personality_trait(trait)
+    _set_personality_refresh_response(
+        response,
+        _commit_personality(repository, request),
+    )
     return _personality_trait(trait)
 
 
@@ -397,11 +486,13 @@ def update_personality_trait(
     "/personality/traits/{trait_code}/synonyms",
     response_model=AdminPersonalitySynonym,
     status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
     summary="新增人格同義詞",
 )
 def create_personality_synonym(
     payload: AdminPersonalitySynonymCreate,
     request: Request,
+    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
@@ -409,19 +500,27 @@ def create_personality_synonym(
     trait = repository.get_trait(trait_code)
     if trait is None:
         raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    item = repository.add_synonym(trait, **payload.model_dump())
-    _commit_personality(repository, request)
+    try:
+        item = repository.add_synonym(trait, **payload.model_dump())
+    except ValueError as exc:
+        raise _invalid_personality_vocabulary(exc) from None
+    _set_personality_refresh_response(
+        response,
+        _commit_personality(repository, request),
+    )
     return _personality_synonym(item)
 
 
 @router.patch(
     "/personality/traits/{trait_code}/synonyms",
     response_model=AdminPersonalitySynonym,
+    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
     summary="修改或停用人格同義詞",
 )
 def update_personality_synonym(
     payload: AdminPersonalitySynonymUpdate,
     request: Request,
+    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
@@ -432,11 +531,17 @@ def update_personality_synonym(
     try:
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("original_term", None)
-        repository.update_synonym(item, **changes)
+        changed = repository.update_synonym(item, **changes)
     except ValueError as exc:
         repository.session.rollback()
-        raise HTTPException(status_code=422, detail={"code": "invalid_personality_vocabulary", "message": str(exc)}) from None
-    _commit_personality(repository, request)
+        raise _invalid_personality_vocabulary(exc) from None
+    if not changed:
+        _set_personality_noop_response(request, response)
+        return _personality_synonym(item)
+    _set_personality_refresh_response(
+        response,
+        _commit_personality(repository, request),
+    )
     return _personality_synonym(item)
 
 

@@ -1,51 +1,48 @@
-# =========================
-# Python 快取檔案
-# =========================
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# Environment and secrets
+.env
+.env.*
+!.env.example
 
-# =========================
-# 虛擬環境
-# =========================
+# Python caches, environments, and build output
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+.venv/
 venv/
 env/
-.venv/
 
-# =========================
-# 不要上傳舊資料夾
-# =========================
-old/
-
-# =========================
-# 不要上傳 API 金鑰
-# =========================
-.env
-
-# =========================
-# 系統檔案
-# =========================
+# Editors, notebooks, and operating-system files
+.vscode/
+.idea/
+.ipynb_checkpoints/
 .DS_Store
 Thumbs.db
 
-# =========================
-# Python / Jupyter
-# =========================
-.ipynb_checkpoints/
-
-# =========================
-# Gradio / 暫存資料
-# =========================
+# Local runtime data and generated reports
+*.log
+*.sqlite*
+*.db
+*.dump
+*.bak
+/benchmarks/
+/evaluation-report*.json
+/evaluation/*-report.json
 .gradio/
+old/
 
-# =========================
-# 本機 Pokémon 圖片與 AWS 上傳紀錄
-# =========================
+# Local-only Pokemon assets and upload records
 pk_pic/
+/pokedex_offline.py
 
-# =========================
-# 本機開發藍圖（不推送到 GitHub）
-# =========================
-寶可夢人格推薦系統_延伸開發藍圖_RAG版.md
-寶可夢人格推薦系統_延伸開發藍圖_RAG版.html
+# Local development blueprints
+/寶可夢人格推薦系統_延伸開發藍圖_RAG版.md
+/寶可夢人格推薦系統_延伸開發藍圖_RAG版.html
