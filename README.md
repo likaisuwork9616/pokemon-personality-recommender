@@ -457,8 +457,6 @@ python scripts/pokemon_s3_image_uploader.py --bucket "your-bucket" --region "you
 
 ## 資料與權利聲明
 
-- 初始資料由專案整理的 [pokemon_descript/pokedex_final.csv](pokemon_descript/pokedex_final.csv) 匯入；目前尚未附每個欄位的來源與授權 metadata，公開散布資料集前應先補齊 provenance。
-- Seed CSV 的 artwork URL 指向 52Poké Wiki，sprite URL 指向 PokeAPI GitHub assets。設定 <code>POKEMON_ARTWORK_BASE_URL</code> 後，importer 會將 artwork 改為指定 CDN URL。
 - 選配的 AWS pipeline 使用本機整理自 [寶可夢官方圖鑑](https://tw.portal-pokemon.com/play/pokedex/) 的 artwork；圖片檔與上傳 manifest 不納入 repository。
 - 本 repository 目前未附開源授權條款；若要允許他人使用、修改或散布，應先新增合適的 <code>LICENSE</code>。
 
