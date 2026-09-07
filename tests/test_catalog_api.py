@@ -38,9 +38,9 @@ def pokemon_fixture(identifier: int, *, name: str) -> SimpleNamespace:
         is_baby=False,
         height_m=Decimal("0.70"),
         weight_kg=Decimal("6.90"),
-        abilities="Overgrow",
-        hidden_ability="Chlorophyll",
-        egg_groups="Monster, Grass",
+        abilities="overgrow|chlorophyll",
+        hidden_ability="chlorophyll",
+        egg_groups="monster|plant",
         habitat="grassland",
         color="green",
         shape="quadruped",
@@ -166,6 +166,35 @@ class CatalogApiTests(unittest.TestCase):
             ["artwork", "sprite"],
         )
         self.assertEqual(body["height_m"], 0.7)
+        self.assertEqual(body["abilities"], "overgrow|chlorophyll")
+        self.assertEqual(body["hidden_ability"], "chlorophyll")
+        self.assertEqual(
+            body["ability_details"],
+            [
+                {"code": "overgrow", "name_zh": "茂盛", "is_hidden": False},
+                {
+                    "code": "chlorophyll",
+                    "name_zh": "葉綠素",
+                    "is_hidden": True,
+                },
+            ],
+        )
+        self.assertEqual(body["egg_groups"], "monster|plant")
+        self.assertEqual(
+            body["egg_group_details"],
+            [
+                {"code": "monster", "name_zh": "怪獸"},
+                {"code": "plant", "name_zh": "植物"},
+            ],
+        )
+        self.assertEqual(
+            body["habitat_detail"],
+            {"code": "grassland", "name_zh": "草原"},
+        )
+        self.assertEqual(
+            body["growth_rate_detail"],
+            {"code": "medium-slow", "name_zh": "較慢"},
+        )
 
     def test_inactive_or_unknown_detail_is_reported_as_not_found(self):
         response = self.client.get("/api/v1/pokemon/999")

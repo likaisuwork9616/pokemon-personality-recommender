@@ -58,6 +58,15 @@ class CatalogStats(BaseModel):
     base_stat_total: int | None = None
 
 
+class CatalogLocalizedTerm(BaseModel):
+    code: str
+    name_zh: str
+
+
+class CatalogAbilityTerm(CatalogLocalizedTerm):
+    is_hidden: bool
+
+
 class PokemonDetail(CatalogPokemon):
     category_zh: str | None = None
     genus: str | None = None
@@ -68,10 +77,14 @@ class PokemonDetail(CatalogPokemon):
     weight_kg: float | None = None
     abilities: str
     hidden_ability: str | None = None
+    ability_details: list[CatalogAbilityTerm]
     egg_groups: str
+    egg_group_details: list[CatalogLocalizedTerm]
     habitat: str | None = None
+    habitat_detail: CatalogLocalizedTerm | None = None
     color: str | None = None
     shape: str | None = None
     growth_rate: str | None = None
+    growth_rate_detail: CatalogLocalizedTerm | None = None
     capture_rate: int | None = None
     is_baby: bool
