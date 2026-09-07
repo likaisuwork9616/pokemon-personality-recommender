@@ -1,3 +1,5 @@
+x-database-url: &database-url "postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting the stack}@db:5432/${POSTGRES_DB:-pokemon}"
+
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -5,9 +7,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-pokemon}
       POSTGRES_USER: ${POSTGRES_USER:-pokemon}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pokemon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting the stack}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +34,7 @@ services:
       - --port
       - "8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      DATABASE_URL: *database-url
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
       PGVECTOR_SEARCH_MODE: ${PGVECTOR_SEARCH_MODE:-hnsw}
@@ -54,7 +56,7 @@ services:
     volumes:
       - model_cache:/models
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
       embed:
         condition: service_completed_successfully
@@ -78,7 +80,7 @@ services:
       - python
       - scripts/reindex_worker.py
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      DATABASE_URL: *database-url
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
       REINDEX_WORKER_POLL_SECONDS: ${REINDEX_WORKER_POLL_SECONDS:-2}
@@ -100,7 +102,7 @@ services:
       - upgrade
       - head
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      DATABASE_URL: *database-url
     depends_on:
       db:
         condition: service_healthy
@@ -114,8 +116,8 @@ services:
       - python
       - scripts/import_pokemon.py
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
-      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:-}
+      DATABASE_URL: *database-url
+      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:-https://d3s7iszk0n7xst.cloudfront.net/images/pokemon/artwork}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -129,7 +131,7 @@ services:
       - python
       - scripts/rebuild_embeddings.py
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      DATABASE_URL: *database-url
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
       HF_HOME: /models/huggingface

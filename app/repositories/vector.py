@@ -365,35 +365,3 @@ class VectorRepository:
             )
             for rank, row in enumerate(self.session.execute(statement), start=1)
         ]
-
-    def active_pokemon_embeddings(self) -> dict[int, list[list[float]]]:
-        """Load stored current vectors grouped by active Pokémon.
-
-        This temporary compatibility adapter prevents the legacy recommender
-        from re-encoding the full corpus while Hybrid Retrieval is introduced.
-        """
-
-        statement = (
-            select(Pokemon.id, PokemonChunkEmbedding.embedding)
-            .select_from(PokemonChunkEmbedding)
-            .join(EmbeddingModel)
-            .join(PokemonKnowledgeChunk)
-            .join(PokemonKnowledgeDocument)
-            .join(Pokemon)
-            .where(
-                EmbeddingModel.is_active.is_(True),
-                PokemonChunkEmbedding.status == "ready",
-                PokemonChunkEmbedding.embedding.is_not(None),
-                PokemonChunkEmbedding.content_hash == PokemonKnowledgeChunk.content_hash,
-                PokemonKnowledgeChunk.is_current.is_(True),
-                PokemonKnowledgeChunk.status == "ready",
-                PokemonKnowledgeDocument.is_current.is_(True),
-                PokemonKnowledgeDocument.status == "ready",
-                Pokemon.is_active.is_(True),
-            )
-            .order_by(Pokemon.id, PokemonKnowledgeChunk.id)
-        )
-        grouped: dict[int, list[list[float]]] = {}
-        for pokemon_id, embedding in self.session.execute(statement):
-            grouped.setdefault(int(pokemon_id), []).append(list(embedding))
-        return grouped

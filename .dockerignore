@@ -20,7 +20,6 @@ env/
 .gradio/
 .ipynb_checkpoints/
 old/
-legacy/
 pk_pic/
 
 tests/
