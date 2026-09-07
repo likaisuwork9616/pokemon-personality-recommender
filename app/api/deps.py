@@ -7,7 +7,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session_factory
-from app.repositories import PokemonRepository
+from app.repositories import PersonalityRepository, PokemonRepository
 
 
 def get_session() -> Iterator[Session]:
@@ -22,3 +22,9 @@ def get_pokemon_repository(
     session: Annotated[Session, Depends(get_session)],
 ) -> PokemonRepository:
     return PokemonRepository(session)
+
+
+def get_personality_repository(
+    session: Annotated[Session, Depends(get_session)],
+) -> PersonalityRepository:
+    return PersonalityRepository(session)

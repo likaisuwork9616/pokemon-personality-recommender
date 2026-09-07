@@ -32,8 +32,14 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260907-4', response.text)
-        self.assertIn('/static/css/app.css?v=20260907-6', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260907-5', response.text)
+        self.assertIn('/static/css/app.css?v=20260907-8', response.text)
+        self.assertIn('id="public-trait-grid"', response.text)
+        self.assertIn("系統採用的人格特質", response.text)
+        self.assertNotIn("data-example", response.text)
+        self.assertNotIn("沉著守護型", response.text)
+        self.assertNotIn("好奇冒險型", response.text)
+        self.assertNotIn("可靠協作型", response.text)
 
     def test_client_calls_v1_api_without_browser_persistence_or_html_injection(self):
         source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -41,7 +47,11 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertIn('fetch("/api/v1/recommendations"', source)
+        self.assertIn('fetch("/api/v1/personality/traits"', source)
         self.assertIn("generate_explanation: true", source)
+        self.assertIn("publicTraitGrid.replaceChildren", source)
+        self.assertNotIn("[data-example]", source)
+        self.assertNotIn("dataset.example", source)
         self.assertNotIn("explainToggle", source)
         self.assertNotIn("explanationPrompt", source)
         self.assertIn("payload.results.length !== 3", source)
@@ -77,7 +87,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260907-6', response.text)
+                self.assertIn('/static/css/app.css?v=20260907-8', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -94,6 +104,15 @@ class RecommendationWebTests(unittest.TestCase):
         dex_number_styles = styles.split(".dex-number {", maxsplit=1)[1].split(
             "}", maxsplit=1
         )[0]
+        trait_title_styles = styles.rsplit(
+            ".public-trait-card-heading h3 {", maxsplit=1
+        )[1].split("}", maxsplit=1)[0]
+        weighted_term_styles = styles.split(
+            ".public-weighted-term {", maxsplit=1
+        )[1].split("}", maxsplit=1)[0]
+        weighted_term_text_styles = styles.split(
+            ".public-weighted-term > span {", maxsplit=1
+        )[1].split("}", maxsplit=1)[0]
 
         self.assertIn("color-scheme: light", styles)
         self.assertIn("--page-bg: #dff1dc", styles)
@@ -104,6 +123,9 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("var(--pokedex-red", hero_styles)
         self.assertIn("var(--signal-ink)", dex_number_styles)
         self.assertIn(".site-header .button-ghost", styles)
+        self.assertIn("overflow-wrap: anywhere", trait_title_styles)
+        self.assertIn("max-width: 100%", weighted_term_styles)
+        self.assertIn("overflow-wrap: anywhere", weighted_term_text_styles)
 
     def test_top_three_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -133,7 +155,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260907-6", response.text)
+        self.assertIn("/static/css/app.css?v=20260907-8", response.text)
         self.assertIn("/static/js/catalog.js?v=20260907-5", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
