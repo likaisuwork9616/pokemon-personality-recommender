@@ -136,11 +136,31 @@ class _Retriever:
         return self.candidates
 
 
+class _PersonalityRepository:
+    def __init__(self, vector=None, error=None) -> None:
+        self.vector = np.zeros(16) if vector is None else vector
+        self.error = error
+        self.calls = []
+
+    def vector_for_text(self, text):
+        self.calls.append(text)
+        if self.error is not None:
+            raise self.error
+        return self.vector
+
+
 class HybridRecommendationEngineTests(unittest.TestCase):
-    def _engine(self, candidates, *, profile_records_loader=None):
+    def _engine(
+        self,
+        candidates,
+        *,
+        profile_records_loader=None,
+        personality_repository=None,
+    ):
         profile = _ProfileEngine()
         sessions = []
         retriever = _Retriever(candidates)
+        personality = personality_repository or _PersonalityRepository()
 
         def session_factory():
             session = _SessionContext()
@@ -152,6 +172,7 @@ class HybridRecommendationEngineTests(unittest.TestCase):
             session_factory=session_factory,
             embedding_model_id=9,
             retrieval_service_factory=lambda _session: retriever,
+            personality_repository_factory=lambda _session: personality,
             profile_records_loader=profile_records_loader,
         )
         return engine, profile, sessions, retriever
@@ -168,6 +189,10 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertTrue(sessions[0].closed)
         self.assertEqual(retriever.calls[0]["embedding_model_id"], 9)
         self.assertEqual(len(retriever.calls[0]["query_vector"]), 384)
+        self.assertEqual(
+            engine._personality_repository_factory(None).calls,
+            ["安靜守護夥伴"],
+        )
         evidence = results[0]["matching_evidence"][0]
         self.assertEqual(evidence["source"], "analysis_text")
         self.assertEqual(evidence["evidence_id"], f"ev_{evidence['chunk_id'].replace('-', '')}")
@@ -213,14 +238,12 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertTrue(sessions[0].closed)
 
     def test_personality_error_does_not_include_the_raw_query(self):
-        engine, profile, _sessions, _retriever = self._engine(
-            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)]
+        engine, _profile, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)],
+            personality_repository=_PersonalityRepository(
+                error=RuntimeError("database details must stay internal")
+            ),
         )
-
-        def fail(text):
-            raise RuntimeError(f"failed while processing {text}")
-
-        profile.text_to_persona_vector = fail
         with self.assertRaisesRegex(
             RetrievalUnavailableError,
             "personality scoring is temporarily unavailable",

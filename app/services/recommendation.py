@@ -10,6 +10,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.repositories.retrieval import RetrievalRepository
+from app.repositories.personality import PersonalityRepository
 from app.repositories.vector import VectorRepository
 from app.services.hybrid_retrieval import HybridRetrievalService, RRF_K
 from app.services.rag import GroundedExplanationService
@@ -34,6 +35,7 @@ class HybridRecommendationEngine:
         session_factory: Callable[[], Any],
         embedding_model_id: int,
         retrieval_service_factory: Callable[[Any], Any] | None = None,
+        personality_repository_factory: Callable[[Any], Any] | None = None,
         explanation_service: GroundedExplanationService | None = None,
         profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
     ) -> None:
@@ -45,6 +47,9 @@ class HybridRecommendationEngine:
                 VectorRepository(session),
                 RetrievalRepository(session),
             )
+        )
+        self._personality_repository_factory = personality_repository_factory or (
+            lambda session: PersonalityRepository(session)
         )
         self.explanation_service = explanation_service or GroundedExplanationService()
         self._encode_lock = Lock()
@@ -119,6 +124,17 @@ class HybridRecommendationEngine:
                     embedding_model_id=self.embedding_model_id,
                     pokemon_limit=50,
                 )
+                try:
+                    user_persona = np.asarray(
+                        self._personality_repository_factory(session).vector_for_text(text),
+                        dtype=float,
+                    )
+                    if user_persona.shape != (16,) or not np.isfinite(user_persona).all():
+                        raise ValueError("unexpected personality vector")
+                except Exception:
+                    raise RetrievalUnavailableError(
+                        "personality scoring is temporarily unavailable"
+                    ) from None
         except RetrievalUnavailableError:
             raise
         except Exception:
@@ -141,12 +157,6 @@ class HybridRecommendationEngine:
                     "runtime Pokémon profile snapshot is stale"
                 ) from None
 
-        try:
-            user_persona = profile_engine.text_to_persona_vector(text)
-        except Exception:
-            raise RetrievalUnavailableError(
-                "personality scoring is temporarily unavailable"
-            ) from None
         alpha = min(0.8, 0.35 + float(np.linalg.norm(user_persona)) * 0.35)
         max_rrf_score = 2.0 / (RRF_K + 1)
         ranked: list[tuple[tuple[float, float, float, int, str, int], dict[str, Any]]] = []

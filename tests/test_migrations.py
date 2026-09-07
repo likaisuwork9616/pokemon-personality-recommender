@@ -21,6 +21,10 @@ KNOWLEDGE_TABLES = {
     "pokemon_knowledge_documents",
     "pokemon_knowledge_chunks",
 }
+PERSONALITY_TABLES = {
+    "personality_traits",
+    "personality_trait_synonyms",
+}
 
 
 class CoreSchemaTests(unittest.TestCase):
@@ -135,6 +139,30 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn('down_revision: str | None = "20260906_0001"', revision)
         self.assertIn('postgresql_using="gin"', revision)
         self.assertIn("to_tsvector('simple'", revision)
+
+    def test_fourth_revision_adds_seeded_sql_personality_dictionary(self):
+        self.assertTrue(PERSONALITY_TABLES.issubset(Base.metadata.tables))
+        traits = Base.metadata.tables["personality_traits"]
+        synonyms = Base.metadata.tables["personality_trait_synonyms"]
+
+        self.assertEqual(tuple(traits.primary_key.columns.keys()), ("code",))
+        self.assertEqual(
+            tuple(synonyms.primary_key.columns.keys()),
+            ("trait_code", "term"),
+        )
+        self.assertEqual(next(iter(synonyms.foreign_keys)).ondelete, "CASCADE")
+
+        revision = (
+            ROOT
+            / "alembic"
+            / "versions"
+            / "20260907_0004_personality_dictionary.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260906_0003"', revision)
+        self.assertIn('"慢熟"', revision)
+        self.assertIn('"承諾"', revision)
+        self.assertIn('"分享"', revision)
+        self.assertIn('"傾聽"', revision)
 
 
 if __name__ == "__main__":

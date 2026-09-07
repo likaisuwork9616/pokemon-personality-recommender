@@ -136,6 +136,11 @@ class EmbeddingServiceTests(unittest.TestCase):
             recommender = PokemonRecommender(
                 dataframe=pd.DataFrame([row]),
                 pokemon_embeddings=np.ones((1, 384)),
+                personality_traits=tuple(f"特質{index}" for index in range(16)),
+                persona_keywords={
+                    f"特質{index}": (f"關鍵字{index}",)
+                    for index in range(16)
+                },
             )
 
         self.assertEqual(recommender.pokemon_embeddings.shape, (1, 384))

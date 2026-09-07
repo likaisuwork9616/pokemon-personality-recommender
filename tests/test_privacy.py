@@ -249,6 +249,11 @@ class QueryPersistenceTests(unittest.TestCase):
             def retrieve(**_kwargs):
                 return [candidate(number) for number in (1, 2, 3)]
 
+        class Personality:
+            @staticmethod
+            def vector_for_text(_text):
+                return np.zeros(16)
+
         class Session:
             def __enter__(self):
                 return self
@@ -261,6 +266,7 @@ class QueryPersistenceTests(unittest.TestCase):
             session_factory=Session,
             embedding_model_id=1,
             retrieval_service_factory=lambda _session: Retriever(),
+            personality_repository_factory=lambda _session: Personality(),
         )
 
         result = engine.recommend(marker)

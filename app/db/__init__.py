@@ -3,6 +3,8 @@
 from app.db.base import Base
 from app.db.models import (
     EmbeddingModel,
+    PersonalityTrait,
+    PersonalityTraitSynonym,
     Pokemon,
     PokemonDescription,
     PokemonImage,
@@ -17,6 +19,8 @@ from app.db.models import (
 __all__ = [
     "Base",
     "EmbeddingModel",
+    "PersonalityTrait",
+    "PersonalityTraitSynonym",
     "Pokemon",
     "PokemonDescription",
     "PokemonImage",
