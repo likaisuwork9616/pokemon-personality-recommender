@@ -156,7 +156,7 @@ class RecommendationWebTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("/static/css/app.css?v=20260907-9", response.text)
-        self.assertIn("/static/js/catalog.js?v=20260908-1", response.text)
+        self.assertIn("/static/js/catalog.js?v=20260908-2", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
         self.assertIn("border-radius: 50%", styles)
@@ -173,7 +173,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="detail-loading"', response.text)
         self.assertIn('id="detail-content" hidden', response.text)
-        self.assertIn("/static/js/catalog.js?v=20260908-1", response.text)
+        self.assertIn("/static/js/catalog.js?v=20260908-2", response.text)
         self.assertGreaterEqual(script.count("loading.hidden = true;"), 2)
         self.assertIn("root.hidden = false;", script)
         hidden_rule = styles.split(".detail-loading[hidden] {", maxsplit=1)[1].split(
@@ -195,6 +195,18 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('names.join("、")', script)
         self.assertIn('"未收錄"', script)
         self.assertNotIn("item?.name_zh || item?.code", script)
+
+    def test_public_detail_renders_only_the_traditional_chinese_pokedex_entry(self):
+        script = (ROOT / "app" / "static" / "js" / "catalog.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('item.description_kind === "description"', script)
+        self.assertIn('.toLowerCase() === "zh-hant"', script)
+        self.assertIn('"description-meta", "中文圖鑑"', script)
+        self.assertNotIn('flavor_text: "英文圖鑑"', script)
+        self.assertNotIn('analysis: "人格分析"', script)
+        self.assertNotIn('admin_note: "補充資料"', script)
 
 
 if __name__ == "__main__":

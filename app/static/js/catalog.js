@@ -281,16 +281,16 @@
     const renderDescriptions = (descriptions) => {
       const container = document.querySelector("#detail-descriptions");
       container.replaceChildren();
-      const labels = {
-        description: "中文圖鑑",
-        flavor_text: "英文圖鑑",
-        analysis: "人格分析",
-        admin_note: "補充資料",
-      };
-      const available = (Array.isArray(descriptions) ? descriptions : []).filter((item) => item?.content);
+      const available = (Array.isArray(descriptions) ? descriptions : []).filter(
+        (item) => item?.content
+          && item.description_kind === "description"
+          && String(item.language_code || "").toLowerCase() === "zh-hant",
+      );
       available.forEach((item) => {
         const card = element("article", "description-card");
-        card.append(element("span", "description-meta", labels[item.description_kind] || item.description_kind || item.language_code));
+        card.append(
+          element("span", "description-meta", "中文圖鑑"),
+        );
         const paragraph = element("p", "", item.content);
         if (item.language_code) paragraph.lang = item.language_code;
         card.append(paragraph);
