@@ -1547,6 +1547,10 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
+.detail-loading[hidden] {
+  display: none;
+}
+
 .detail-hero .detail-visual,
 .detail-loading > .detail-visual {
   position: relative;
