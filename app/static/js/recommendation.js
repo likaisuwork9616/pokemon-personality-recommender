@@ -48,24 +48,6 @@
     return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokedexNumber}.png`;
   };
 
-  const evidenceKindLabels = Object.freeze({
-    profile: "寶可夢人格摘要",
-    description_zh: "中文圖鑑敘述",
-    flavor_text_en: "英文圖鑑敘述",
-    analysis: "人格分析",
-    analysis_text: "人格分析",
-  });
-
-  const languageLabels = Object.freeze({
-    "zh-Hant": "繁體中文",
-    zh: "中文",
-    en: "英文",
-    mul: "多語混合",
-  });
-
-  const evidenceKindLabel = (value) => evidenceKindLabels[value] || "知識文件";
-  const languageLabel = (value) => languageLabels[value] || "其他語言";
-
   const responseError = (payload, response) => {
     const message = payload?.detail?.message;
     if (typeof message === "string" && message) return message;
@@ -87,83 +69,42 @@
     return row;
   };
 
-  const metadataItem = (label, value) => {
-    const item = element("div", "evidence-meta-item");
-    item.append(element("dt", "", label), element("dd", "", value));
-    return item;
-  };
-
-  const evidenceCard = (evidence, index) => {
-    const details = element("details", "evidence-item");
-    details.id = `evidence-${evidence.evidence_id}`;
-    const summary = element(
-      "summary",
-      "",
-      `證據 ${index + 1} · ${evidenceKindLabel(evidence.source)}`,
-    );
-    const body = element("div", "evidence-body");
-    body.append(element("p", "evidence-text", evidence.text));
-
-    const metadata = element("dl", "evidence-metadata");
-    metadata.append(metadataItem("文件類型", evidenceKindLabel(evidence.document_kind)));
-    metadata.append(metadataItem("語言", languageLabel(evidence.language_code)));
-    metadata.append(metadataItem("RRF", Number(evidence.rrf_score).toFixed(5)));
-    if (evidence.dense_rank !== null) {
-      metadata.append(
-        metadataItem(
-          "Dense",
-          `#${evidence.dense_rank} · ${Number(evidence.dense_score).toFixed(4)}`,
-        ),
-      );
-    }
-    if (evidence.lexical_rank !== null) {
-      metadata.append(
-        metadataItem(
-          "全文搜尋",
-          `#${evidence.lexical_rank} · ${Number(evidence.lexical_score).toFixed(4)}`,
-        ),
-      );
-    }
-    body.append(metadata);
-
-    const lineage = element("div", "evidence-lineage");
-    lineage.append(element("span", "", "Evidence ID"));
-    lineage.append(element("code", "", evidence.evidence_id));
-    lineage.append(element("span", "", "Document ID"));
-    lineage.append(element("code", "", evidence.document_id));
-    lineage.append(element("span", "", "Chunk ID"));
-    lineage.append(element("code", "", evidence.chunk_id));
-    body.append(lineage);
-
-    if (Array.isArray(evidence.matched_traits) && evidence.matched_traits.length) {
-      const traits = element("div", "evidence-traits");
-      evidence.matched_traits.forEach((trait) => {
-        traits.append(element("span", "trait-chip", trait));
-      });
-      body.append(traits);
-    }
-    details.append(summary, body);
-    return details;
-  };
-
   const explanationCard = (explanation) => {
     const section = element("section", "explanation-card");
     const heading = element("div", "explanation-heading");
-    heading.append(element("h4", "", "證據式推薦解釋"));
-    const provider = explanation.used_fallback
-      ? "本地 fallback"
-      : String(explanation.provider).toUpperCase();
+    heading.append(
+      element("h4", "", explanation.used_fallback ? "契合分析" : "AI 契合分析"),
+    );
+    const providerLabels = {
+      gemini: "Gemini 分析",
+      openai: "OpenAI 分析",
+      local: "本地分析",
+    };
+    const provider = providerLabels[explanation.provider] || "分析完成";
     heading.append(element("span", "explanation-provider", provider));
     section.append(heading, element("p", "", explanation.text));
 
-    const citations = element("div", "citation-list");
-    citations.append(element("span", "", "引用："));
-    explanation.citations.forEach((citation) => {
-      const link = element("a", "", citation);
-      link.href = `#evidence-${citation}`;
-      citations.append(link);
-    });
-    section.append(citations);
+    const citationCount = Array.isArray(explanation.citations)
+      ? explanation.citations.length
+      : 0;
+    section.append(
+      element(
+        "p",
+        "analysis-source",
+        `已融合人格訊號與 ${citationCount} 段圖鑑依據`,
+      ),
+    );
+    return section;
+  };
+
+  const explanationPrompt = () => {
+    const section = element("section", "explanation-card explanation-prompt");
+    const heading = element("div", "explanation-heading");
+    heading.append(element("h4", "", "契合分析"));
+    section.append(
+      heading,
+      element("p", "", "勾選「融合 AI 契合分析」後重新推薦，即可查看人格特質與圖鑑內容如何彼此呼應。"),
+    );
     return section;
   };
 
@@ -220,14 +161,10 @@
       scoreRow("人格分數", result.scores.personality),
     );
 
-    const evidenceSection = element("section", "evidence-section");
-    evidenceSection.append(element("h4", "", "匹配證據"));
-    result.evidence.forEach((evidence, index) => {
-      evidenceSection.append(evidenceCard(evidence, index));
-    });
-
-    card.append(heading, typeList, scores, evidenceSection);
-    if (result.explanation) card.append(explanationCard(result.explanation));
+    card.append(heading, typeList, scores);
+    card.append(
+      result.explanation ? explanationCard(result.explanation) : explanationPrompt(),
+    );
     return card;
   };
 

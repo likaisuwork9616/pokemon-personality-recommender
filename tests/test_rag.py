@@ -7,11 +7,13 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.rag import (
+    GeminiExplanationBundle,
     GeminiExplanationProvider,
     GroundedExplanationService,
     LLMExplanationBundle,
     OpenAIExplanationProvider,
     RAGConfig,
+    SYSTEM_INSTRUCTION,
 )
 
 
@@ -24,6 +26,9 @@ def _result(number: int) -> dict[str, object]:
         "name": f"寶可夢{number}",
         "name_en": f"Pokemon {number}",
         "type": "一般",
+        "category": "夥伴寶可夢",
+        "desc": f"寶可夢{number}會耐心陪伴並守護重要的夥伴。",
+        "analysis_text": "忠誠守護者、溫柔照顧者",
         "img": "",
         "scores": {"semantic": 0.8, "personality": 0.7, "total": 0.75},
         "matching_evidence": [
@@ -44,6 +49,8 @@ def _result(number: int) -> dict[str, object]:
                 "matched_traits": ["忠誠守護者"],
             }
         ],
+        "user_traits": ["忠誠守護者", "孤獨思考者"],
+        "pokemon_traits": ["忠誠守護者", "溫柔照顧者"],
     }
 
 
@@ -107,6 +114,14 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertIn("END_UNTRUSTED_DATA", prompt)
         self.assertIn(injection, prompt)
         self.assertIn(f"ev_{1:032x}", prompt)
+        self.assertIn('"persona_signals"', prompt)
+        self.assertIn('"pokemon_profile"', prompt)
+        self.assertIn("寶可夢1會耐心陪伴並守護重要的夥伴", prompt)
+
+    def test_system_instruction_requires_internalized_traditional_chinese_analysis(self):
+        self.assertIn("internalizes and paraphrases", SYSTEM_INSTRUCTION)
+        self.assertIn("Translate English evidence", SYSTEM_INSTRUCTION)
+        self.assertIn("Never dump a raw Pokédex passage", SYSTEM_INSTRUCTION)
 
     def test_invalid_citation_malformed_output_and_timeout_use_local_fallback(self):
         providers = (
@@ -128,15 +143,67 @@ class GroundedExplanationTests(unittest.TestCase):
                     " ".join(item.text for item in explanations.values()),
                 )
 
+    def test_english_or_retrieval_metadata_provider_output_uses_local_fallback(self):
+        invalid_texts = (
+            "This Pokemon is a loyal companion who will always stay by your side.",
+            "這隻寶可夢很適合你，詳細依據請參考 ev_00000000000000000000000000000001。",
+        )
+        for invalid_text in invalid_texts:
+            with self.subTest(invalid_text=invalid_text):
+                bundle = _bundle()
+                bundle.explanations[0].text = invalid_text
+                explanations = GroundedExplanationService(
+                    _Provider(bundle)
+                ).explain_many("我重視朋友", self.results)
+
+                self.assertTrue(
+                    all(item.provider == "local" for item in explanations.values())
+                )
+
     def test_no_provider_uses_evidence_only_local_explanation(self):
         explanations = GroundedExplanationService().explain_many(
             "不應出現在解釋中的原始查詢",
             self.results,
         )
 
-        self.assertEqual(explanations[1].provider, "local")
-        self.assertEqual(explanations[1].citations, (f"ev_{1:032x}",))
-        self.assertNotIn("原始查詢", explanations[1].text)
+        explanation = explanations[1]
+        self.assertEqual(explanation.provider, "local")
+        self.assertEqual(explanation.citations, (f"ev_{1:032x}",))
+        self.assertNotIn("原始查詢", explanation.text)
+        self.assertNotIn("檢索證據指出", explanation.text)
+        self.assertIn("忠誠守護者", explanation.text)
+        self.assertIn("圖鑑資料", explanation.text)
+        self.assertIn("共同展現", explanation.text)
+
+    def test_local_analysis_never_displays_english_retrieval_text(self):
+        self.results[0]["matching_evidence"][0].update(
+            language_code="en",
+            source="flavor_text_en",
+            text="A rare Pokemon that brings happiness to people.",
+        )
+
+        explanation = GroundedExplanationService().explain_many(
+            "我重視朋友",
+            self.results,
+        )[1]
+
+        self.assertNotIn("A rare Pokemon", explanation.text)
+        self.assertIn("圖鑑資料", explanation.text)
+        self.assertIn("忠誠守護者", explanation.text)
+
+    def test_local_analysis_prefers_behavior_over_physical_appearance(self):
+        self.results[0]["analysis_text"] = (
+            "中文圖鑑描述：牠全身披著黃色的毛，眼睛呈現紅色。"
+            "牠非常重視夥伴，會耐心合作並守護同伴。"
+        )
+
+        explanation = GroundedExplanationService().explain_many(
+            "我重視朋友",
+            self.results,
+        )[1]
+
+        self.assertIn("耐心合作並守護同伴", explanation.text)
+        self.assertNotIn("全身披著黃色的毛", explanation.text)
 
 
 class ProviderSelectionTests(unittest.TestCase):
@@ -226,7 +293,9 @@ class ProviderAdapterTests(unittest.TestCase):
         self.assertEqual(len(result.explanations), 3)
         self.assertEqual(calls[0]["model"], "gemini-test")
         self.assertEqual(calls[0]["config"].response_mime_type, "application/json")
-        self.assertIs(calls[0]["config"].response_schema, LLMExplanationBundle)
+        self.assertIs(calls[0]["config"].response_schema, GeminiExplanationBundle)
+        self.assertEqual(calls[0]["config"].max_output_tokens, 2400)
+        self.assertEqual(calls[0]["config"].thinking_config.thinking_level, "LOW")
 
     def test_openai_disables_storage_and_uses_parse_schema(self):
         calls = []
