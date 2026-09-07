@@ -25,7 +25,6 @@ from app.web.routes import router as web_router
 EngineFactory = Callable[[], Any]
 
 def _default_engine_factory() -> Any:
-    import numpy as np
     import pandas as pd
 
     from app.db.session import get_session_factory
@@ -34,7 +33,7 @@ def _default_engine_factory() -> Any:
         PokemonRepository,
         VectorRepository,
     )
-    from pokedex_online import PokemonRecommender
+    from app.services.personality_profile import PokemonPersonalityProfile
 
     session_factory = get_session_factory()
 
@@ -63,12 +62,8 @@ def _default_engine_factory() -> Any:
     ):
         raise RuntimeError("目前 active embedding model 與 API query encoder 設定不一致")
 
-    # The legacy class remains the deterministic personality-profile component.
-    # Its corpus matrix is deliberately unused: semantic retrieval now stays in
-    # PostgreSQL and returns traceable chunk evidence for every request.
-    profile_engine = PokemonRecommender(
+    profile_engine = PokemonPersonalityProfile(
         dataframe=pd.DataFrame.from_records(records),
-        pokemon_embeddings=np.zeros((len(records), 384), dtype=float),
         personality_traits=personality_catalog.trait_names,
         persona_keywords=personality_catalog.synonyms_by_trait,
     )

@@ -87,7 +87,6 @@ class HybridRecommendationEngine:
             refreshed.df = pd.DataFrame.from_records(records).fillna("")
             refreshed._validate_columns()
             refreshed.persona_vectors = refreshed.build_persona_vectors()
-            refreshed.pokemon_embeddings = np.zeros((len(records), 384), dtype=float)
             database_ids = self._database_id_map(refreshed)
             self.profile_engine = refreshed
             self._profile_state = (refreshed, database_ids)
