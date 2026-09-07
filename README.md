@@ -32,6 +32,21 @@
 - Alembic 管理 PostgreSQL schema 版本
 - Docker Compose 一次完成 migration、seed、embedding 初始化與 API 啟動
 
+### MVP 資料成果
+
+| 項目 | 數量／狀態 |
+| --- | ---: |
+| 寶可夢主資料 | 1,025 筆 |
+| 圖鑑描述 | 3,075 筆 |
+| 圖片 URL | 2,050 筆 |
+| 可追蹤知識文件 | 4,100 筆 |
+| 知識 chunks | 4,684 筆 |
+| pgvector embeddings | 4,684 筆 |
+| 人格維度 | 16 種 |
+| 中英文人格同義詞 | 230 筆 |
+| 自動化測試 | 125 項 |
+| 官方 artwork | 1,025 張，S3 與 CloudFront 內容雜湊驗證完成 |
+
 ## 系統架構
 
 ```mermaid
@@ -268,6 +283,80 @@ Alembic migration：
 alembic upgrade head
 alembic downgrade -1
 ```
+
+## 查看 PostgreSQL 資料
+
+Docker Compose 啟動後，可直接進入 PostgreSQL：
+
+```bash
+docker compose exec db psql -U pokemon -d pokemon
+```
+
+進入 `pokemon=#` 後，可使用以下指令：
+
+```sql
+-- 列出 public schema 的全部 tables
+\dt
+
+-- 查看 table 結構
+\d pokemon
+\d pokemon_knowledge_chunks
+\d pokemon_chunk_embeddings
+
+-- 查看寶可夢主資料
+SELECT pokedex_number, name_zh, name_en
+FROM pokemon
+ORDER BY pokedex_number
+LIMIT 10;
+
+-- 查看目前 artwork URL
+SELECT p.pokedex_number, p.name_zh, pi.image_url
+FROM pokemon AS p
+JOIN pokemon_images AS pi ON pi.pokemon_id = p.id
+WHERE pi.image_kind = 'artwork'
+ORDER BY p.pokedex_number
+LIMIT 10;
+
+-- 查看 SQL 人格同義詞
+SELECT pt.name_zh, pts.term, pts.weight
+FROM personality_traits AS pt
+JOIN personality_trait_synonyms AS pts
+  ON pts.trait_code = pt.code
+ORDER BY pt.vector_index, pts.term
+LIMIT 30;
+
+-- 離開 psql
+\q
+```
+
+也可使用 pgAdmin 或 DBeaver 連線：
+
+| 設定 | 值 |
+| --- | --- |
+| Host | `localhost` |
+| Port | `.env` 的 `POSTGRES_PORT`，預設 `5432` |
+| Database | `.env` 的 `POSTGRES_DB`，預設 `pokemon` |
+| Username | `.env` 的 `POSTGRES_USER`，預設 `pokemon` |
+| Password | `.env` 的 `POSTGRES_PASSWORD` |
+
+### 如何確認執行期查詢 SQL，而不是 CSV
+
+CSV 是可重跑的初始資料來源，只在 `seed` 階段匯入 PostgreSQL；正式 API 不會在每次推薦時掃描 CSV。可從以下路徑驗證：
+
+1. API 啟動時由 [`PokemonRepository`](app/main.py#L36-L49) 讀取 PostgreSQL；若資料庫沒有資料會直接 readiness 失敗。
+2. 每次推薦都在新的 DB session 中執行 [Hybrid Retrieval 與人格 SQL 查詢](app/services/recommendation.py#L119-L137)。
+3. Dense 分支透過 [pgvector cosine distance](app/repositories/vector.py#L245-L295) 搜尋 384 維 chunk embeddings。
+4. Lexical 分支透過 [PostgreSQL `tsvector`、`plainto_tsquery` 與 `ts_rank_cd`](app/repositories/retrieval.py#L35-L86) 搜尋知識 chunks。
+5. 人格文字透過 [`personality_traits` 與 `personality_trait_synonyms`](app/repositories/personality.py#L78-L109) 產生 16 維向量。
+6. [`seed` service](docker-compose.yml#L84-L97) 完成 CSV 匯入後即結束，持續運行的只有 `api` 與 `db`。
+
+可用以下指令確認服務生命週期：
+
+```bash
+docker compose ps -a
+```
+
+正常狀態會看到 `seed`、`migrate`、`embed` 為 `Exited (0)`，`api` 與 `db` 則保持 `Up`／`healthy`。CSV 仍應保留在專案中，因為建立全新資料庫或重新 seed 時會再次使用。
 
 ## AWS 圖片交付流程
 
