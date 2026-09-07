@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="輸入你的個性與生活方式，取得有可追蹤證據的 Top 3 寶可夢人格推薦。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260907-3">
-  <script src="/static/js/recommendation.js?v=20260907-3" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260907-4">
+  <script src="/static/js/recommendation.js?v=20260907-4" defer></script>
 </head>
 <body data-page="recommendation">
   <a class="skip-link" href="#recommendation-form">跳到推薦表單</a>
@@ -27,7 +27,10 @@
     <section class="recommendation-hero" aria-labelledby="recommendation-title">
       <div class="hero-copy">
         <p class="eyebrow">HYBRID RETRIEVAL / GROUNDED RAG</p>
-        <h1 id="recommendation-title">哪一隻寶可夢<br>最像你？</h1>
+        <h1 id="recommendation-title">
+          <span>哪一隻寶可夢</span>
+          <span>最像你？</span>
+        </h1>
         <p>描述你的個性、重視的事或面對生活的方式。系統會結合語意檢索與人格特徵，找出三個最匹配的答案。</p>
         <div class="signal-list" aria-label="推薦方法摘要">
           <span>pgvector 語意</span>
@@ -50,10 +53,6 @@
           <button type="button" data-example="我充滿好奇心、喜歡冒險和認識新朋友，遇到挑戰會先行動再調整。">好奇冒險型</button>
           <button type="button" data-example="我重視團隊合作，擅長照顧大家的感受，會耐心把混亂的事情整理好。">可靠協作型</button>
         </div>
-        <label class="ai-option">
-          <input id="generate-explanation" type="checkbox">
-          <span><strong>融合 AI 契合分析</strong><small>把人格特質與圖鑑資料內化成中文推薦原因；排名不受影響。</small></span>
-        </label>
         <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 預設不寫入 PostgreSQL，也不保存在瀏覽器儲存空間。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
           <span>找出我的 Top 3</span><span aria-hidden="true">→</span>
