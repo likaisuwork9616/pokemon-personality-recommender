@@ -53,7 +53,7 @@
           <button type="button" data-example="我充滿好奇心、喜歡冒險和認識新朋友，遇到挑戰會先行動再調整。">好奇冒險型</button>
           <button type="button" data-example="我重視團隊合作，擅長照顧大家的感受，會耐心把混亂的事情整理好。">可靠協作型</button>
         </div>
-        <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 預設不寫入 PostgreSQL，也不保存在瀏覽器儲存空間。</p>
+        <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 不寫入 PostgreSQL 或瀏覽器儲存空間；若伺服器啟用外部 AI，文字與本次證據會送往設定的服務產生契合分析。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
           <span>找出我的 Top 3</span><span aria-hidden="true">→</span>
         </button>

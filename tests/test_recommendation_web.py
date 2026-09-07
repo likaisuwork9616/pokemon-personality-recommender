@@ -30,6 +30,8 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("<span>最像你？</span>", response.text)
         self.assertIn('id="recommendation-grid"', response.text)
         self.assertIn("原始文字與 query vector", response.text)
+        self.assertIn("若伺服器啟用外部 AI", response.text)
+        self.assertIn("文字與本次證據會送往設定的服務", response.text)
         self.assertIn('/static/js/recommendation.js?v=20260907-4', response.text)
         self.assertIn('/static/css/app.css?v=20260907-4', response.text)
 
