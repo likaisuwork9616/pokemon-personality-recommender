@@ -90,6 +90,19 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn(".recommendation-image {\n    display: grid", narrow_styles)
         self.assertNotIn(".recommendation-image {\n    display: none", narrow_styles)
 
+    def test_catalog_uses_css_pokeball_artwork_backdrop(self):
+        response = self.client.get("/pokemon")
+        styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/static/css/app.css?v=20260907-5", response.text)
+        self.assertIn("/static/js/catalog.js?v=20260907-5", response.text)
+        self.assertIn(".card-image::before", styles)
+        self.assertIn(".card-image::after", styles)
+        self.assertIn("border-radius: 50%", styles)
+
 
 if __name__ == "__main__":
     unittest.main()
