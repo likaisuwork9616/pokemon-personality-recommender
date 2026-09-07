@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from math import isfinite
-from typing import Sequence
+import os
+from typing import Literal, Sequence
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select, update
@@ -42,11 +43,66 @@ class VectorSearchHit:
     semantic_score: float
 
 
+@dataclass(frozen=True)
+class VectorSearchConfig:
+    """Runtime controls for exact or HNSW-backed nearest-neighbour search."""
+
+    mode: Literal["exact", "hnsw"] = "hnsw"
+    ef_search: int = 100
+    iterative_scan: Literal["strict_order", "relaxed_order"] = "strict_order"
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"exact", "hnsw"}:
+            raise ValueError("vector search mode must be exact or hnsw")
+        if not 1 <= self.ef_search <= 1000:
+            raise ValueError("HNSW ef_search must be between 1 and 1000")
+        if self.iterative_scan not in {"strict_order", "relaxed_order"}:
+            raise ValueError(
+                "HNSW iterative scan must be strict_order or relaxed_order"
+            )
+
+    @classmethod
+    def from_env(cls) -> "VectorSearchConfig":
+        return cls(
+            mode=os.getenv("PGVECTOR_SEARCH_MODE", "hnsw").strip().casefold(),
+            ef_search=int(os.getenv("HNSW_EF_SEARCH", "100")),
+            iterative_scan=os.getenv(
+                "HNSW_ITERATIVE_SCAN", "strict_order"
+            ).strip().casefold(),
+        )
+
+
 class VectorRepository:
     """Store vectors and query them while enforcing knowledge visibility rules."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        search_config: VectorSearchConfig | None = None,
+    ) -> None:
         self.session = session
+        self.search_config = search_config or VectorSearchConfig.from_env()
+
+    def _configure_vector_scan(self) -> None:
+        """Apply transaction-local planner and pgvector settings."""
+
+        if self.search_config.mode == "exact":
+            settings = {
+                "enable_indexscan": "off",
+                "enable_bitmapscan": "off",
+                "enable_seqscan": "on",
+            }
+        else:
+            settings = {
+                "enable_indexscan": "on",
+                "enable_bitmapscan": "on",
+                "enable_seqscan": "on",
+                "hnsw.ef_search": str(self.search_config.ef_search),
+                "hnsw.iterative_scan": self.search_config.iterative_scan,
+            }
+        for name, value in settings.items():
+            self.session.execute(select(func.set_config(name, value, True)))
 
     def active_model(self) -> EmbeddingModel:
         """Return the one configured active model for startup preflight."""
@@ -249,7 +305,7 @@ class VectorRepository:
         embedding_model_id: int,
         limit: int = 50,
     ) -> list[VectorSearchHit]:
-        """Return exact cosine-nearest current chunks with stable tie-breaking."""
+        """Return cosine-nearest chunks using the configured planner mode."""
 
         vector = [float(value) for value in query_vector]
         if len(vector) != 384 or not all(isfinite(value) for value in vector):
@@ -257,6 +313,7 @@ class VectorRepository:
         if not 1 <= limit <= 200:
             raise ValueError("limit must be between 1 and 200")
 
+        self._configure_vector_scan()
         distance = PokemonChunkEmbedding.embedding.cosine_distance(vector)
         statement = (
             select(

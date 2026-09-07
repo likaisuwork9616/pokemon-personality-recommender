@@ -206,6 +206,9 @@ docker compose down
 | `DATABASE_URL` | Docker Compose 產生 | PostgreSQL SQLAlchemy URL |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | query 與 chunk embedding model |
 | `EMBEDDING_MODEL_VERSION` | `default` | embedding lineage 版本 |
+| `PGVECTOR_SEARCH_MODE` | `hnsw` | `hnsw` 近似搜尋或 `exact` 精確基準模式 |
+| `HNSW_EF_SEARCH` | `100` | HNSW 查詢候選數，範圍 `1–1000` |
+| `HNSW_ITERATIVE_SCAN` | `strict_order` | filtered HNSW 的迭代掃描排序模式 |
 | `LLM_PROVIDER` | `gemini` | `gemini` 或 `openai` |
 | `GEMINI_API_KEY` | 空白 | Gemini 選配金鑰 |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model 名稱 |
@@ -276,6 +279,27 @@ python scripts/import_pokemon.py \
 ```bash
 python scripts/rebuild_embeddings.py --batch-size 64
 ```
+
+比較 exact 與 HNSW 的延遲、QPS 與 recall@K：
+
+```bash
+python scripts/benchmark_vector_search.py \
+  --sample-size 50 \
+  --top-k 50 \
+  --ef-search 100 \
+  --output benchmarks/vector-search.json
+```
+
+報告會記錄實際 corpus 大小、exact／HNSW 的 mean、p50、p95、QPS，以及以 exact Top-K 為 ground truth 的平均與最低 recall。大型資料集驗收可加上 `--minimum-corpus-size`，避免誤用小型資料庫結果作為效能結論。
+
+目前 4,684 個 vectors、50 次 Top-50 查詢的本機基準如下；數值會受硬體、PostgreSQL cache 與資料量影響，因此應視為開發環境 baseline，而不是大型正式環境的保證值：
+
+| 模式 | Mean | p50 | p95 | QPS |
+| --- | ---: | ---: | ---: | ---: |
+| Exact | 5.11 ms | 4.69 ms | 6.92 ms | 195.51 |
+| HNSW | 1.99 ms | 1.88 ms | 3.19 ms | 503.45 |
+
+HNSW 平均 recall@50 為 `99.64%`，最低單次 recall@50 為 `92%`。正式大型資料集應在目標硬體上以 `--minimum-corpus-size`、不同 `ef_search` 與代表性查詢集重新量測。
 
 Alembic migration：
 
@@ -472,12 +496,11 @@ TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost/test_db \
 
 ## MVP 邊界與後續方向
 
-目前版本刻意採用 exact pgvector search、單一管理員與同步 reindex，讓資料一致性、證據可追蹤性及完整測試優先於基礎設施複雜度。
+目前版本已提供 pgvector HNSW 與 exact 基準模式；HNSW 使用 cosine operator class、filtered iterative scan 與可調整的 `ef_search`，並以 recall／延遲 benchmark 驗證品質與效能取捨。
 
 後續可擴充：
 
 - 公開環境部署、HTTPS 與自動化 CI/CD
-- pgvector HNSW 索引與大型資料集效能量測
 - 背景工作佇列與 reindex 進度通知
 - 可觀測性、retrieval evaluation 與離線推薦品質指標
 - 更完整的人格詞庫管理介面

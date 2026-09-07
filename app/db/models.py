@@ -742,6 +742,14 @@ class PokemonChunkEmbedding(Base):
             "status",
             "chunk_id",
         ),
+        Index(
+            "ix_chunk_embeddings_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_where=text("status = 'ready' AND embedding IS NOT NULL"),
+        ),
     )
 
     chunk_id: Mapped[UUID] = mapped_column(

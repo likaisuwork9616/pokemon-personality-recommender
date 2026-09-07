@@ -35,6 +35,9 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
       EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
+      PGVECTOR_SEARCH_MODE: ${PGVECTOR_SEARCH_MODE:-hnsw}
+      HNSW_EF_SEARCH: ${HNSW_EF_SEARCH:-100}
+      HNSW_ITERATIVE_SCAN: ${HNSW_ITERATIVE_SCAN:-strict_order}
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}

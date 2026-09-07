@@ -11,7 +11,11 @@ import pandas as pd
 from sqlalchemy.dialects import postgresql
 
 from app.db import Base
-from app.repositories.vector import EmbeddingCandidate, VectorRepository
+from app.repositories.vector import (
+    EmbeddingCandidate,
+    VectorRepository,
+    VectorSearchConfig,
+)
 from app.services.embedding import EmbeddingConfig, EmbeddingService
 from pokedex_online import PokemonRecommender
 
@@ -159,14 +163,27 @@ class PgvectorSchemaTests(unittest.TestCase):
         )
         self.assertEqual(models.c.dimensions.server_default.arg.text, "384")
 
-    def test_migration_is_exact_search_only(self):
+    def test_embedding_migrations_progress_from_exact_to_hnsw(self):
         source = (
             ROOT / "alembic" / "versions" / "20260906_0003_chunk_embeddings.py"
+        ).read_text(encoding="utf-8")
+        hnsw_source = (
+            ROOT / "alembic" / "versions" / "20260907_0005_hnsw_index.py"
         ).read_text(encoding="utf-8")
 
         self.assertIn("Vector(384)", source)
         self.assertIn('down_revision: str | None = "20260906_0002"', source)
         self.assertNotIn("hnsw", source.casefold())
+        self.assertIn('down_revision: str | None = "20260907_0004"', hnsw_source)
+        self.assertIn('postgresql_using="hnsw"', hnsw_source)
+        self.assertIn('"embedding": "vector_cosine_ops"', hnsw_source)
+
+    def test_hnsw_runtime_configuration_is_validated(self):
+        self.assertEqual(VectorSearchConfig().mode, "hnsw")
+        with self.assertRaisesRegex(ValueError, "exact or hnsw"):
+            VectorSearchConfig(mode="invalid")
+        with self.assertRaisesRegex(ValueError, "between 1 and 1000"):
+            VectorSearchConfig(ef_search=0)
 
     def test_pending_query_enforces_all_visibility_guards(self):
         class CaptureSession:
