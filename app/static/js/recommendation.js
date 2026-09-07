@@ -40,6 +40,14 @@
     }
   };
 
+  const officialArtworkUrl = (value) => {
+    const pokedexNumber = Number(value);
+    if (!Number.isInteger(pokedexNumber) || pokedexNumber < 1 || pokedexNumber > 1025) {
+      return null;
+    }
+    return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokedexNumber}.png`;
+  };
+
   const evidenceKindLabels = Object.freeze({
     profile: "寶可夢人格摘要",
     description_zh: "中文圖鑑敘述",
@@ -177,14 +185,22 @@
 
     const imageShell = element("div", "recommendation-image");
     imageShell.append(element("span", "image-placeholder", "?"));
-    const imageUrl = safeImageUrl(pokemon.image_url);
+    const fallbackImageUrl = officialArtworkUrl(pokemon.pokedex_number);
+    const imageUrl = safeImageUrl(pokemon.image_url) || fallbackImageUrl;
     if (imageUrl) {
       const image = document.createElement("img");
       image.src = imageUrl;
       image.alt = `${pokemon.name_zh || "寶可夢"} 圖像`;
       image.loading = "lazy";
       image.decoding = "async";
-      image.addEventListener("error", () => image.remove(), { once: true });
+      image.referrerPolicy = "no-referrer";
+      image.addEventListener("error", () => {
+        if (fallbackImageUrl && image.src !== fallbackImageUrl) {
+          image.src = fallbackImageUrl;
+          return;
+        }
+        image.remove();
+      });
       imageShell.append(image);
     }
     heading.append(rank, identity, imageShell);
