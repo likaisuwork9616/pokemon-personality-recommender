@@ -164,6 +164,20 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn('"分享"', revision)
         self.assertIn('"傾聽"', revision)
 
+    def test_fifth_revision_adds_partial_cosine_hnsw_index(self):
+        embeddings = Base.metadata.tables["pokemon_chunk_embeddings"]
+        index = next(
+            item
+            for item in embeddings.indexes
+            if item.name == "ix_chunk_embeddings_embedding_hnsw"
+        )
+        options = index.dialect_options["postgresql"]
+
+        self.assertEqual(options["using"], "hnsw")
+        self.assertEqual(options["ops"], {"embedding": "vector_cosine_ops"})
+        self.assertEqual(options["with"], {"m": 16, "ef_construction": 64})
+        self.assertIn("status = 'ready'", str(options["where"]))
+
 
 if __name__ == "__main__":
     unittest.main()
