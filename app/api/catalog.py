@@ -51,6 +51,13 @@ def _primary_image(pokemon: Any) -> str | None:
     return images[0].image_url if images else None
 
 
+def _is_public_description(item: Any) -> bool:
+    return (
+        str(item.language_code).strip().casefold() == "zh-hant"
+        and str(item.description_kind).strip().casefold() == "description"
+    )
+
+
 def _localized_term(term: LocalizedTerm | None) -> CatalogLocalizedTerm | None:
     if term is None:
         return None
@@ -162,7 +169,11 @@ def pokemon_detail(
                 is_primary=item.is_primary,
             )
             for item in sorted(
-                pokemon.descriptions,
+                (
+                    item
+                    for item in pokemon.descriptions
+                    if _is_public_description(item)
+                ),
                 key=lambda item: (
                     item.language_code,
                     item.description_kind,
