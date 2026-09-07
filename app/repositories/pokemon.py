@@ -404,6 +404,8 @@ class PokemonRepository:
             self.session.execute(
                 select(Type.code, Type.name_zh).where(Type.code.in_(record.type_codes))
             )
+            .tuples()
+            .all()
         )
         description_contents = {
             item.source_key.removeprefix("csv:"): item.content
@@ -443,6 +445,8 @@ class PokemonRepository:
                 .where(PokemonKnowledgeDocument.pokemon_id == pokemon_id)
                 .group_by(PokemonKnowledgeDocument.source_key)
             )
+            .tuples()
+            .all()
         )
 
         provisional = build_knowledge_documents(source_record)

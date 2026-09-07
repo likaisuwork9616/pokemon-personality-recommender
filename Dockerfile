@@ -13,6 +13,7 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
+    && python -m pip install torch==2.14.0+cpu --index-url https://download.pytorch.org/whl/cpu \
     && python -m pip install --requirement requirements.txt
 
 COPY . .

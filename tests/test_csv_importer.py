@@ -180,14 +180,20 @@ class PostgresImporterIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         database_url = os.environ["TEST_DATABASE_URL"]
         self.admin_engine = create_engine(database_url)
+        self.engine = None
         self.schema = f"test_csv_importer_{uuid.uuid4().hex}"
         with self.admin_engine.begin() as connection:
             connection.execute(text(f'CREATE SCHEMA "{self.schema}"'))
+        self.addCleanup(self._cleanup_schema)
         self.engine = create_engine(
             database_url,
-            connect_args={"options": f"-csearch_path={self.schema}"},
+            connect_args={"options": f"-csearch_path={self.schema},public"},
         )
-        Base.metadata.create_all(self.engine)
+        # ``public`` stays on the search path so PostgreSQL can resolve the
+        # extension-owned ``vector`` type.  Disable checkfirst so identically
+        # named application tables in public are never mistaken for this
+        # disposable schema's tables.
+        Base.metadata.create_all(self.engine, checkfirst=False)
         self.session_factory = sessionmaker(
             bind=self.engine,
             class_=Session,
@@ -196,10 +202,11 @@ class PostgresImporterIntegrationTests(unittest.TestCase):
         )
         self.records = read_csv_records(DEFAULT_CSV_PATH)[:2]
 
-    def tearDown(self) -> None:
-        self.engine.dispose()
+    def _cleanup_schema(self) -> None:
+        if self.engine is not None:
+            self.engine.dispose()
         with self.admin_engine.begin() as connection:
-            connection.execute(text(f'DROP SCHEMA "{self.schema}" CASCADE'))
+            connection.execute(text(f'DROP SCHEMA IF EXISTS "{self.schema}" CASCADE'))
         self.admin_engine.dispose()
 
     def scalar_count(self, model) -> int:
