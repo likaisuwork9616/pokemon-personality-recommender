@@ -156,7 +156,7 @@ class RecommendationWebTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("/static/css/app.css?v=20260907-9", response.text)
-        self.assertIn("/static/js/catalog.js?v=20260907-5", response.text)
+        self.assertIn("/static/js/catalog.js?v=20260908-1", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
         self.assertIn("border-radius: 50%", styles)
@@ -173,12 +173,28 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="detail-loading"', response.text)
         self.assertIn('id="detail-content" hidden', response.text)
+        self.assertIn("/static/js/catalog.js?v=20260908-1", response.text)
         self.assertGreaterEqual(script.count("loading.hidden = true;"), 2)
         self.assertIn("root.hidden = false;", script)
         hidden_rule = styles.split(".detail-loading[hidden] {", maxsplit=1)[1].split(
             "}", maxsplit=1
         )[0]
         self.assertIn("display: none", hidden_rule)
+
+    def test_detail_profile_prefers_structured_traditional_chinese_metadata(self):
+        script = (ROOT / "app" / "static" / "js" / "catalog.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("pokemon.ability_details", script)
+        self.assertIn("abilityDetails.filter((item) => !item.is_hidden)", script)
+        self.assertIn("abilityDetails.filter((item) => item.is_hidden)", script)
+        self.assertIn("pokemon.habitat_detail", script)
+        self.assertIn("pokemon.egg_group_details", script)
+        self.assertIn("pokemon.growth_rate_detail", script)
+        self.assertIn('names.join("、")', script)
+        self.assertIn('"未收錄"', script)
+        self.assertNotIn("item?.name_zh || item?.code", script)
 
 
 if __name__ == "__main__":
