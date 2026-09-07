@@ -217,6 +217,17 @@ class ReindexServiceTests(unittest.TestCase):
         self.assertFalse(repository.old_current)
         self.assertEqual(summary.index.status, "ready")
 
+    def test_progress_callback_reports_discovery_and_completed_chunks(self):
+        vectors = _FakeVectorRepository(self.candidates())
+        repository = _FakeReindexRepository(vectors)
+        updates = []
+        service = PokemonReindexService(repository, vectors, encoder_factory=lambda _name: _Encoder(), batch_size=1)
+
+        service.rebuild(25, progress_callback=lambda *values: updates.append(values))
+
+        self.assertEqual(updates[0][:2], (0, 2))
+        self.assertEqual(updates[-1][:4], (2, 2, 2, 0))
+
     def test_failure_preserves_old_index_and_retry_can_activate(self):
         vectors = _FakeVectorRepository(self.candidates())
         repository = _FakeReindexRepository(vectors)

@@ -85,6 +85,10 @@
                 <p id="admin-index-summary" class="muted">尚未讀取索引狀態。</p>
               </div>
               <button id="admin-reindex" class="button button-ghost" type="button">重新建立 embedding</button>
+              <div id="admin-reindex-progress" class="reindex-progress" hidden aria-live="polite">
+                <progress id="admin-reindex-meter" max="100" value="0"></progress>
+                <span id="admin-reindex-message">等待背景工作。</span>
+              </div>
               <ul id="admin-index-sources" class="index-source-list"></ul>
             </section>
             <div class="admin-wide editor-actions">

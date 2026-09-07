@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const state = { csrf: "", page: 1, totalPages: 1, selected: null };
+  const state = { csrf: "", page: 1, totalPages: 1, selected: null, reindexTimer: null };
   const byId = (id) => document.getElementById(id);
   const loginPanel = byId("admin-login-panel");
   const dashboard = byId("admin-dashboard");
@@ -126,8 +126,44 @@
     }
   };
 
+  const renderReindexProgress = (job) => {
+    const panel = byId("admin-reindex-progress");
+    const meter = byId("admin-reindex-meter");
+    const total = Math.max(0, job.progress_total || 0);
+    panel.hidden = false;
+    meter.max = Math.max(1, total);
+    meter.value = Math.min(job.progress_current || 0, meter.max);
+    byId("admin-reindex-message").textContent =
+      `${job.message || job.status} · ${job.progress_current}/${total} chunks`;
+  };
+
+  const pollReindexJob = async (jobId) => {
+    const button = byId("admin-reindex");
+    try {
+      const job = await api(`/reindex-jobs/${jobId}`);
+      renderReindexProgress(job);
+      if (["queued", "running"].includes(job.status)) {
+        state.reindexTimer = window.setTimeout(() => pollReindexJob(jobId), 1000);
+        return;
+      }
+      button.disabled = false;
+      if (job.index) renderIndexStatus(job.index);
+      const failed = job.status === "failed";
+      setStatus(
+        failed
+          ? `${job.message || "索引重建失敗"}${job.last_error ? `：${job.last_error}` : ""}`
+          : `索引已更新，共建立 ${job.embedded} 個 embedding。`,
+        failed,
+      );
+    } catch (error) {
+      button.disabled = false;
+      setStatus(error.message, true);
+    }
+  };
+
   const loadDetail = async (pokemonId) => {
     try {
+      if (state.reindexTimer) window.clearTimeout(state.reindexTimer);
       const data = await api(`/pokemon/${pokemonId}`);
       state.selected = data;
       byId("admin-editor-title").textContent = `編輯 #${data.pokedex_number} ${data.name_zh}`;
@@ -159,6 +195,7 @@
   };
 
   const resetEditor = () => {
+    if (state.reindexTimer) window.clearTimeout(state.reindexTimer);
     state.selected = null;
     byId("admin-editor").reset();
     byId("admin-id").value = "";
@@ -166,6 +203,7 @@
     byId("admin-editor-title").textContent = "新增資料";
     byId("admin-toggle-active").hidden = true;
     byId("admin-index-panel").hidden = true;
+    byId("admin-reindex-progress").hidden = true;
   };
 
   const normalizedTypes = () =>
@@ -284,19 +322,13 @@
     if (!state.selected) return;
     const button = byId("admin-reindex");
     button.disabled = true;
-    setStatus("正在重新建立 embedding，請稍候……");
+    setStatus("已送出背景重建工作，可在此查看進度。");
     try {
-      const result = await api(`/pokemon/${state.selected.id}/reindex`, { method: "POST" });
-      renderIndexStatus(result.index);
-      setStatus(
-        result.failed
-          ? `重建完成，但有 ${result.failed} 個 chunk 失敗；可再次重試。`
-          : `索引已更新，共建立 ${result.embedded} 個 embedding。`,
-        result.failed > 0,
-      );
+      const job = await api(`/pokemon/${state.selected.id}/reindex`, { method: "POST" });
+      renderReindexProgress(job);
+      pollReindexJob(job.id);
     } catch (error) {
       setStatus(error.message, true);
-    } finally {
       button.disabled = false;
     }
   });
