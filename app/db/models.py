@@ -68,12 +68,18 @@ class PersonalityTraitSynonym(Base):
     __tablename__ = "personality_trait_synonyms"
     __table_args__ = (
         CheckConstraint("length(trim(term)) > 0", name="term_not_blank"),
+        CheckConstraint("length(trim(normalized_term)) > 0", name="normalized_term_not_blank"),
         CheckConstraint(
             "length(trim(language_code)) > 0",
             name="language_code_not_blank",
         ),
         CheckConstraint("weight > 0 AND weight <= 5", name="weight_range"),
         Index("ix_personality_synonyms_active_term", "is_active", "term"),
+        UniqueConstraint(
+            "trait_code",
+            "normalized_term",
+            name="uq_personality_synonyms_trait_normalized_term",
+        ),
     )
 
     trait_code: Mapped[str] = mapped_column(
@@ -86,6 +92,7 @@ class PersonalityTraitSynonym(Base):
         primary_key=True,
     )
     term: Mapped[str] = mapped_column(String(80), primary_key=True)
+    normalized_term: Mapped[str] = mapped_column(String(80), nullable=False)
     language_code: Mapped[str] = mapped_column(
         String(10),
         nullable=False,
@@ -106,6 +113,20 @@ class PersonalityTraitSynonym(Base):
     )
 
     trait: Mapped[PersonalityTrait] = relationship(back_populates="synonyms")
+
+
+class PersonalityVocabularyState(Base):
+    """Singleton revision used to refresh vocabulary across API processes."""
+
+    __tablename__ = "personality_vocabulary_state"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="singleton_id"),
+        CheckConstraint("revision > 0", name="revision_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1, server_default=text("1"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class Pokemon(Base):

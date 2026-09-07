@@ -189,6 +189,21 @@ class CoreSchemaTests(unittest.TestCase):
         revision = (ROOT / "alembic" / "versions" / "20260907_0006_reindex_jobs.py").read_text(encoding="utf-8")
         self.assertIn('down_revision: str | None = "20260907_0005"', revision)
 
+    def test_seventh_revision_versions_and_normalizes_personality_vocabulary(self):
+        synonyms = Base.metadata.tables["personality_trait_synonyms"]
+        uniques = {
+            tuple(column.name for column in constraint.columns)
+            for constraint in synonyms.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+        self.assertIn(("trait_code", "normalized_term"), uniques)
+        self.assertIn("personality_vocabulary_state", Base.metadata.tables)
+
+        revision = (ROOT / "alembic" / "versions" / "20260907_0007_personality_vocabulary_admin.py").read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260907_0006"', revision)
+        self.assertIn("normalized_term", revision)
+        self.assertIn("personality_vocabulary_state", revision)
+
 
 if __name__ == "__main__":
     unittest.main()

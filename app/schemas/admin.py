@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 from app.schemas.catalog import PokemonDetail
 
@@ -296,3 +296,67 @@ class AdminReindexJobResponse(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     index: AdminIndexStatus | None = None
+
+
+class AdminPersonalitySynonym(BaseModel):
+    term: str
+    language_code: str
+    weight: float = Field(gt=0, le=5)
+    is_active: bool
+
+
+class AdminPersonalityTrait(BaseModel):
+    code: str
+    name_zh: str
+    vector_index: int = Field(ge=0, le=15)
+    is_active: bool
+    synonyms: list[AdminPersonalitySynonym]
+
+
+class AdminPersonalityTraitUpdate(BaseModel):
+    name_zh: str = Field(min_length=1, max_length=40)
+
+    @field_validator("name_zh")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("人格特質名稱不可為空白。")
+        return value.strip()
+
+
+class AdminPersonalitySynonymCreate(BaseModel):
+    term: str = Field(min_length=1, max_length=80)
+    language_code: str = Field(default="zh-Hant", min_length=1, max_length=10)
+    weight: float = Field(default=2.0, gt=0, le=5)
+    is_active: bool = True
+
+    @field_validator("term", "language_code")
+    @classmethod
+    def strip_required(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("同義詞與語言代碼不可為空白。")
+        return value.strip()
+
+
+class AdminPersonalitySynonymUpdate(BaseModel):
+    original_term: str = Field(min_length=1, max_length=80)
+    term: str | None = Field(default=None, min_length=1, max_length=80)
+    language_code: str | None = Field(default=None, min_length=1, max_length=10)
+    weight: float | None = Field(default=None, gt=0, le=5)
+    is_active: bool | None = None
+
+    @field_validator("original_term", "term", "language_code")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("同義詞與語言代碼不可為空白。")
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def require_change(self) -> Self:
+        changes = self.model_fields_set - {"original_term"}
+        if not changes:
+            raise ValueError("至少提供一個要修改的欄位。")
+        if any(getattr(self, field) is None for field in changes):
+            raise ValueError("修改欄位不可為 null。")
+        return self

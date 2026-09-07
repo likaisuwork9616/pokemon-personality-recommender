@@ -8,7 +8,7 @@ from math import sqrt
 from sqlalchemy import Text, bindparam, func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import PersonalityTrait, PersonalityTraitSynonym
+from app.db.models import PersonalityTrait, PersonalityTraitSynonym, PersonalityVocabularyState
 
 
 PERSONALITY_DIMENSIONS = 16
@@ -74,6 +74,14 @@ class PersonalityRepository:
                 for row in trait_rows
             },
         )
+
+    def revision(self) -> int:
+        value = self.session.scalar(
+            select(PersonalityVocabularyState.revision).where(PersonalityVocabularyState.id == 1)
+        )
+        if value is None:
+            raise RuntimeError("personality vocabulary revision is missing")
+        return int(value)
 
     def vector_for_text(self, text: str) -> tuple[float, ...]:
         """Return a normalized 16-dimensional vector from parameterized SQL."""

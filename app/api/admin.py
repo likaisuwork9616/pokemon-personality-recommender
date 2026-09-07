@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.catalog import _catalog_item, _images
 from app.api.deps import get_session
 from app.repositories.admin import AdminPokemonRepository
+from app.repositories.personality_admin import AdminPersonalityRepository
 from app.repositories.reindex import PokemonIndexState, PokemonReindexRepository
 from app.repositories.reindex_jobs import PokemonReindexJobRepository
 from app.repositories.vector import VectorRepository
@@ -20,6 +21,11 @@ from app.schemas.admin import (
     AdminIndexSourceStatus,
     AdminIndexStatus,
     AdminLoginRequest,
+    AdminPersonalitySynonym,
+    AdminPersonalitySynonymCreate,
+    AdminPersonalitySynonymUpdate,
+    AdminPersonalityTrait,
+    AdminPersonalityTraitUpdate,
     AdminPokemonCreate,
     AdminPokemonDetail,
     AdminPokemonPage,
@@ -50,6 +56,12 @@ def get_admin_repository(
     session: Annotated[Session, Depends(get_session)],
 ) -> AdminPokemonRepository:
     return AdminPokemonRepository(session)
+
+
+def get_admin_personality_repository(
+    session: Annotated[Session, Depends(get_session)],
+) -> AdminPersonalityRepository:
+    return AdminPersonalityRepository(session)
 
 
 def get_admin_auth(request: Request) -> AdminAuth:
@@ -199,6 +211,28 @@ def _job_response(job: Any, index: AdminIndexStatus | None = None) -> AdminReind
     )
 
 
+def _personality_synonym(item: Any) -> AdminPersonalitySynonym:
+    return AdminPersonalitySynonym(
+        term=item.term,
+        language_code=item.language_code,
+        weight=item.weight,
+        is_active=item.is_active,
+    )
+
+
+def _personality_trait(item: Any) -> AdminPersonalityTrait:
+    return AdminPersonalityTrait(
+        code=item.code,
+        name_zh=item.name_zh,
+        vector_index=item.vector_index,
+        is_active=item.is_active,
+        synonyms=[
+            _personality_synonym(synonym)
+            for synonym in sorted(item.synonyms, key=lambda value: (not value.is_active, value.term))
+        ],
+    )
+
+
 def _get_or_404(repository: AdminPokemonRepository, pokemon_id: int):
     pokemon = repository.get(pokemon_id)
     if pokemon is None:
@@ -248,6 +282,31 @@ def _refresh_runtime_profiles(request: Request) -> None:
         # The recommendation engine also self-refreshes when it encounters a
         # newly indexed ID. Never roll back an already committed admin edit.
         request.app.state.profile_refresh_error = "profile refresh failed"
+
+
+def _refresh_runtime_personality(request: Request, repository: AdminPersonalityRepository) -> None:
+    engine = getattr(request.app.state, "recommendation_engine", None)
+    refresh = getattr(engine, "refresh_personality_catalog", None)
+    if not callable(refresh):
+        return
+    try:
+        refresh(repository.catalog(), revision=repository.revision())
+        request.app.state.personality_refresh_error = None
+    except Exception:
+        request.app.state.personality_refresh_error = "personality refresh failed"
+
+
+def _commit_personality(repository: AdminPersonalityRepository, request: Request) -> None:
+    try:
+        repository.bump_revision()
+        repository.session.commit()
+    except IntegrityError:
+        repository.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "personality_conflict", "message": "人格特質名稱或同義詞已存在。"},
+        ) from None
+    _refresh_runtime_personality(request, repository)
 
 
 @router.post("/session", response_model=AdminSessionResponse, summary="管理員登入")
@@ -300,6 +359,85 @@ def logout(
         samesite="strict",
     )
     return response
+
+
+@router.get(
+    "/personality/traits",
+    response_model=list[AdminPersonalityTrait],
+    summary="列出人格特質與同義詞",
+)
+def list_personality_traits(
+    _admin_session: Annotated[AdminSession, Depends(require_admin)],
+    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+) -> list[AdminPersonalityTrait]:
+    return [_personality_trait(item) for item in repository.list_traits()]
+
+
+@router.patch(
+    "/personality/traits/{trait_code}",
+    response_model=AdminPersonalityTrait,
+    summary="修改人格特質名稱",
+)
+def update_personality_trait(
+    payload: AdminPersonalityTraitUpdate,
+    request: Request,
+    trait_code: str,
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+) -> AdminPersonalityTrait:
+    trait = repository.get_trait(trait_code)
+    if trait is None:
+        raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
+    repository.rename_trait(trait, payload.name_zh)
+    _commit_personality(repository, request)
+    return _personality_trait(trait)
+
+
+@router.post(
+    "/personality/traits/{trait_code}/synonyms",
+    response_model=AdminPersonalitySynonym,
+    status_code=status.HTTP_201_CREATED,
+    summary="新增人格同義詞",
+)
+def create_personality_synonym(
+    payload: AdminPersonalitySynonymCreate,
+    request: Request,
+    trait_code: str,
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+) -> AdminPersonalitySynonym:
+    trait = repository.get_trait(trait_code)
+    if trait is None:
+        raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
+    item = repository.add_synonym(trait, **payload.model_dump())
+    _commit_personality(repository, request)
+    return _personality_synonym(item)
+
+
+@router.patch(
+    "/personality/traits/{trait_code}/synonyms",
+    response_model=AdminPersonalitySynonym,
+    summary="修改或停用人格同義詞",
+)
+def update_personality_synonym(
+    payload: AdminPersonalitySynonymUpdate,
+    request: Request,
+    trait_code: str,
+    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+) -> AdminPersonalitySynonym:
+    item = repository.get_synonym(trait_code, payload.original_term)
+    if item is None:
+        raise HTTPException(status_code=404, detail={"code": "synonym_not_found", "message": "找不到指定的人格同義詞。"})
+    try:
+        changes = payload.model_dump(exclude_unset=True)
+        changes.pop("original_term", None)
+        repository.update_synonym(item, **changes)
+    except ValueError as exc:
+        repository.session.rollback()
+        raise HTTPException(status_code=422, detail={"code": "invalid_personality_vocabulary", "message": str(exc)}) from None
+    _commit_personality(repository, request)
+    return _personality_synonym(item)
 
 
 @router.get("/pokemon", response_model=AdminPokemonPage, summary="列出所有寶可夢")

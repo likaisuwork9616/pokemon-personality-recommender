@@ -562,6 +562,60 @@ button:disabled {
   color: var(--muted);
 }
 
+.vocabulary-panel {
+  margin-top: 1.5rem;
+}
+
+.vocabulary-panel .panel-heading select {
+  min-width: min(22rem, 100%);
+}
+
+.vocabulary-trait-form,
+.vocabulary-synonym-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  align-items: end;
+}
+
+.vocabulary-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.vocabulary-table {
+  width: 100%;
+  min-width: 44rem;
+  border-collapse: collapse;
+}
+
+.vocabulary-table th,
+.vocabulary-table td {
+  padding: 0.55rem;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.vocabulary-table input {
+  min-width: 7rem;
+  padding: 0.5rem;
+}
+
+.vocabulary-table td:first-child input {
+  min-width: 12rem;
+}
+
+.vocabulary-table td:last-child {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.button-small {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.82rem;
+}
+
 .index-source-list small {
   grid-column: 1 / -1;
   overflow-wrap: anywhere;
@@ -1501,6 +1555,11 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .vocabulary-trait-form,
+  .vocabulary-synonym-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .recommendation-hero {
     grid-template-columns: 1fr;
     min-height: 0;
@@ -1584,6 +1643,11 @@ button:disabled {
   }
 
   .admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .vocabulary-trait-form,
+  .vocabulary-synonym-form {
     grid-template-columns: 1fr;
   }
 
