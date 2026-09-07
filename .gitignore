@@ -35,6 +35,7 @@ Thumbs.db
 *.bak
 /benchmarks/
 /evaluation-report*.json
+/evaluation/*-report.json
 .gradio/
 old/
 
