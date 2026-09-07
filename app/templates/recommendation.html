@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="輸入你的個性與生活方式，取得有可追蹤證據的 Top 3 寶可夢人格推薦。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260907-2">
-  <script src="/static/js/recommendation.js?v=20260907-2" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260907-3">
+  <script src="/static/js/recommendation.js?v=20260907-3" defer></script>
 </head>
 <body data-page="recommendation">
   <a class="skip-link" href="#recommendation-form">跳到推薦表單</a>
@@ -32,7 +32,7 @@
         <div class="signal-list" aria-label="推薦方法摘要">
           <span>pgvector 語意</span>
           <span>中文全文搜尋</span>
-          <span>可追蹤證據</span>
+          <span>融合式契合分析</span>
         </div>
       </div>
 
@@ -42,7 +42,7 @@
           <textarea id="personality-text" name="text" rows="8" minlength="2" maxlength="2000" required placeholder="例如：我慢熟但很重視承諾，遇到朋友需要幫忙時會默默站在旁邊支持……"></textarea>
         </label>
         <div class="input-meta">
-          <span>寫得越具體，匹配證據越清楚</span>
+          <span>寫得越具體，契合分析越貼近你</span>
           <span id="character-count">0 / 2000</span>
         </div>
         <div class="example-prompts" aria-label="範例描述">
@@ -52,7 +52,7 @@
         </div>
         <label class="ai-option">
           <input id="generate-explanation" type="checkbox">
-          <span><strong>產生 AI 推薦解釋</strong><small>勾選後才會將本次文字與證據交給設定的 LLM；排名不受影響。</small></span>
+          <span><strong>融合 AI 契合分析</strong><small>把人格特質與圖鑑資料內化成中文推薦原因；排名不受影響。</small></span>
         </label>
         <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 預設不寫入 PostgreSQL，也不保存在瀏覽器儲存空間。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
@@ -84,7 +84,7 @@
 
   <footer class="site-footer">
     <span>Pokémon Personality Recommender</span>
-    <span>推薦理由只使用本次檢索證據</span>
+    <span>推薦分析受本次人格訊號與圖鑑依據約束</span>
   </footer>
 </body>
 </html>

@@ -29,8 +29,9 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertNotIn('id="generate-explanation" type="checkbox" checked', response.text)
         self.assertIn('id="recommendation-grid"', response.text)
         self.assertIn("原始文字與 query vector", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260907-2', response.text)
-        self.assertIn('/static/css/app.css?v=20260907-2', response.text)
+        self.assertIn('融合 AI 契合分析', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260907-3', response.text)
+        self.assertIn('/static/css/app.css?v=20260907-3', response.text)
 
     def test_client_calls_v1_api_without_browser_persistence_or_html_injection(self):
         source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -41,11 +42,14 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("generate_explanation: explainToggle.checked", source)
         self.assertIn("payload.results.length !== 3", source)
         self.assertIn("textContent", source)
-        self.assertIn('description_zh: "中文圖鑑敘述"', source)
-        self.assertIn('analysis_text: "人格分析"', source)
-        self.assertIn('"zh-Hant": "繁體中文"', source)
-        self.assertIn("evidenceKindLabel(evidence.source)", source)
-        self.assertIn("languageLabel(evidence.language_code)", source)
+        self.assertIn('"AI 契合分析"', source)
+        self.assertIn('gemini: "Gemini 分析"', source)
+        self.assertIn("已融合人格訊號與", source)
+        self.assertNotIn("evidence.text", source)
+        self.assertNotIn("Evidence ID", source)
+        self.assertNotIn("Document ID", source)
+        self.assertNotIn("Chunk ID", source)
+        self.assertNotIn("RRF", source)
         for forbidden in (
             "innerHTML",
             "outerHTML",

@@ -841,8 +841,7 @@ button:disabled {
   object-fit: contain;
 }
 
-.recommendation-types,
-.evidence-traits {
+.recommendation-types {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
@@ -895,75 +894,6 @@ button:disabled {
   background: linear-gradient(90deg, var(--accent), var(--signal));
 }
 
-.evidence-section > h4 {
-  margin: 1rem 0 0.55rem;
-}
-
-.evidence-item {
-  border-top: 1px solid rgba(60, 91, 126, 0.45);
-}
-
-.evidence-item summary {
-  padding: 0.65rem 0;
-  color: #cbd8e6;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.evidence-body {
-  padding: 0 0 0.85rem;
-}
-
-.evidence-text {
-  margin: 0;
-  color: #c3d1e0;
-  font-size: 0.88rem;
-}
-
-.evidence-metadata {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
-  margin: 0.75rem 0;
-}
-
-.evidence-meta-item {
-  display: flex;
-  gap: 0.4rem;
-  justify-content: space-between;
-  padding: 0.35rem 0.45rem;
-  background: rgba(5, 15, 27, 0.54);
-  border-radius: 0.35rem;
-  font-size: 0.68rem;
-}
-
-.evidence-meta-item dt {
-  color: var(--muted);
-}
-
-.evidence-meta-item dd {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.evidence-lineage {
-  display: grid;
-  gap: 0.15rem;
-  color: var(--muted);
-  font-size: 0.64rem;
-}
-
-.evidence-lineage code {
-  display: block;
-  margin-bottom: 0.25rem;
-  overflow-wrap: anywhere;
-  color: #9fcfe6;
-}
-
-.trait-chip {
-  padding-block: 0.2rem;
-}
-
 .explanation-card {
   padding: 0.9rem;
   margin-top: 1rem;
@@ -999,18 +929,20 @@ button:disabled {
   font-size: 0.88rem;
 }
 
-.citation-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+.analysis-source {
   margin-top: 0.65rem;
   color: var(--muted);
   font-size: 0.68rem;
 }
 
-.citation-list a {
-  color: var(--focus);
-  overflow-wrap: anywhere;
+.explanation-card .analysis-source {
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 212, 92, 0.2);
+}
+
+.explanation-prompt {
+  background: rgba(107, 143, 181, 0.08);
+  border-color: rgba(107, 143, 181, 0.34);
 }
 
 .button-quiet:hover {
