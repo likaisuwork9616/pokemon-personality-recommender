@@ -5,7 +5,6 @@
   if (!form) return;
 
   const input = document.querySelector("#personality-text");
-  const explainToggle = document.querySelector("#generate-explanation");
   const submit = document.querySelector("#recommend-submit");
   const counter = document.querySelector("#character-count");
   const loading = document.querySelector("#recommendation-loading");
@@ -97,17 +96,6 @@
     return section;
   };
 
-  const explanationPrompt = () => {
-    const section = element("section", "explanation-card explanation-prompt");
-    const heading = element("div", "explanation-heading");
-    heading.append(element("h4", "", "契合分析"));
-    section.append(
-      heading,
-      element("p", "", "勾選「融合 AI 契合分析」後重新推薦，即可查看人格特質與圖鑑內容如何彼此呼應。"),
-    );
-    return section;
-  };
-
   const resultCard = (result) => {
     const pokemon = result.pokemon;
     const card = element("article", `recommendation-card rank-${result.rank}`);
@@ -162,9 +150,7 @@
     );
 
     card.append(heading, typeList, scores);
-    card.append(
-      result.explanation ? explanationCard(result.explanation) : explanationPrompt(),
-    );
+    if (result.explanation) card.append(explanationCard(result.explanation));
     return card;
   };
 
@@ -213,7 +199,7 @@
         },
         body: JSON.stringify({
           text,
-          generate_explanation: explainToggle.checked,
+          generate_explanation: true,
         }),
         signal: activeController.signal,
       });

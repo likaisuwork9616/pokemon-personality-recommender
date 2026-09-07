@@ -637,9 +637,14 @@ button:disabled {
 
 .hero-copy h1 {
   margin: 0;
-  font-size: clamp(3.1rem, 7vw, 6.2rem);
+  font-size: clamp(3.1rem, 6vw, 5.5rem);
   line-height: 0.95;
   letter-spacing: -0.065em;
+}
+
+.hero-copy h1 span {
+  display: block;
+  white-space: nowrap;
 }
 
 .hero-copy > p:not(.eyebrow) {
@@ -708,35 +713,6 @@ button:disabled {
 .example-prompts button:hover {
   color: var(--text);
   border-color: var(--focus);
-}
-
-.ai-option {
-  display: flex;
-  gap: 0.8rem;
-  padding: 0.9rem;
-  margin-top: 1.25rem;
-  align-items: flex-start;
-  background: rgba(5, 15, 27, 0.58);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.ai-option input {
-  width: 1.15rem;
-  height: 1.15rem;
-  margin-top: 0.18rem;
-  flex: 0 0 auto;
-  accent-color: var(--accent);
-}
-
-.ai-option span {
-  display: grid;
-}
-
-.ai-option small {
-  margin-top: 0.2rem;
-  color: var(--muted);
 }
 
 .privacy-note {
@@ -1007,11 +983,6 @@ button:disabled {
 .explanation-card .analysis-source {
   padding-top: 0.55rem;
   border-top: 1px solid rgba(255, 212, 92, 0.2);
-}
-
-.explanation-prompt {
-  background: rgba(107, 143, 181, 0.08);
-  border-color: rgba(107, 143, 181, 0.34);
 }
 
 .button-quiet:hover {
@@ -1660,7 +1631,7 @@ button:disabled {
   }
 
   .hero-copy h1 {
-    font-size: clamp(3rem, 17vw, 5rem);
+    font-size: clamp(2.7rem, 14.5vw, 5rem);
   }
 }
 
