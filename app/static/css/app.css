@@ -1057,13 +1057,49 @@ button:disabled {
   position: relative;
   display: grid;
   aspect-ratio: 4 / 3;
+  isolation: isolate;
   place-items: center;
   overflow: hidden;
-  background:
-    radial-gradient(circle, rgba(105, 144, 181, 0.2) 0 31%, transparent 32%),
-    rgba(6, 16, 28, 0.72);
+  background: linear-gradient(150deg, rgba(22, 43, 68, 0.94), rgba(6, 16, 28, 0.94));
   border: 1px solid rgba(82, 117, 156, 0.35);
   border-radius: 0.8rem;
+}
+
+.card-image::before {
+  position: absolute;
+  top: -20%;
+  left: 50%;
+  z-index: -2;
+  width: 112%;
+  aspect-ratio: 1;
+  content: "";
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(127, 158, 190, 0.2) 0 44%,
+      rgba(4, 13, 24, 0.72) 44% 56%,
+      rgba(205, 220, 235, 0.09) 56% 100%
+    );
+  border: 0.72rem solid rgba(118, 151, 184, 0.2);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+
+.card-image::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -1;
+  width: 3.5rem;
+  aspect-ratio: 1;
+  content: "";
+  background: #152a42;
+  border: 0.6rem solid rgba(4, 13, 24, 0.78);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 0.24rem rgba(134, 166, 197, 0.2),
+    0 0.5rem 1.4rem rgba(0, 0, 0, 0.24);
+  transform: translate(-50%, -50%);
 }
 
 .card-image img {
@@ -1077,6 +1113,7 @@ button:disabled {
 
 .image-placeholder {
   position: absolute;
+  z-index: 1;
   display: grid;
   width: 4.6rem;
   aspect-ratio: 1;
