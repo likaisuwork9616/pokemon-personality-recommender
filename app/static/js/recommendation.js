@@ -40,6 +40,24 @@
     }
   };
 
+  const evidenceKindLabels = Object.freeze({
+    profile: "寶可夢人格摘要",
+    description_zh: "中文圖鑑敘述",
+    flavor_text_en: "英文圖鑑敘述",
+    analysis: "人格分析",
+    analysis_text: "人格分析",
+  });
+
+  const languageLabels = Object.freeze({
+    "zh-Hant": "繁體中文",
+    zh: "中文",
+    en: "英文",
+    mul: "多語混合",
+  });
+
+  const evidenceKindLabel = (value) => evidenceKindLabels[value] || "知識文件";
+  const languageLabel = (value) => languageLabels[value] || "其他語言";
+
   const responseError = (payload, response) => {
     const message = payload?.detail?.message;
     if (typeof message === "string" && message) return message;
@@ -73,14 +91,14 @@
     const summary = element(
       "summary",
       "",
-      `證據 ${index + 1} · ${evidence.source}`,
+      `證據 ${index + 1} · ${evidenceKindLabel(evidence.source)}`,
     );
     const body = element("div", "evidence-body");
     body.append(element("p", "evidence-text", evidence.text));
 
     const metadata = element("dl", "evidence-metadata");
-    metadata.append(metadataItem("文件類型", evidence.document_kind));
-    metadata.append(metadataItem("語言", evidence.language_code));
+    metadata.append(metadataItem("文件類型", evidenceKindLabel(evidence.document_kind)));
+    metadata.append(metadataItem("語言", languageLabel(evidence.language_code)));
     metadata.append(metadataItem("RRF", Number(evidence.rrf_score).toFixed(5)));
     if (evidence.dense_rank !== null) {
       metadata.append(
