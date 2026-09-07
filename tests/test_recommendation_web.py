@@ -33,7 +33,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
         self.assertIn('/static/js/recommendation.js?v=20260907-4', response.text)
-        self.assertIn('/static/css/app.css?v=20260907-4', response.text)
+        self.assertIn('/static/css/app.css?v=20260907-6', response.text)
 
     def test_client_calls_v1_api_without_browser_persistence_or_html_injection(self):
         source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -71,6 +71,40 @@ class RecommendationWebTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('href="/">人格推薦</a>', response.text)
 
+    def test_app_pages_share_light_green_pokedex_theme(self):
+        for path in ("/", "/pokemon", "/pokemon/1", "/admin"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('data-theme="pokedex"', response.text)
+                self.assertIn('/static/css/app.css?v=20260907-6', response.text)
+
+        styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        body_styles = styles.split('body[data-theme="pokedex"] {', maxsplit=1)[
+            1
+        ].split("}", maxsplit=1)[0]
+        header_styles = styles.split(".site-header {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+        hero_styles = styles.split(".recommendation-hero {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+        dex_number_styles = styles.split(".dex-number {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+
+        self.assertIn("color-scheme: light", styles)
+        self.assertIn("--page-bg: #dff1dc", styles)
+        self.assertIn("--pokedex-red: #d9233e", styles)
+        self.assertIn('body[data-theme="pokedex"]', styles)
+        self.assertIn("var(--bg)", body_styles)
+        self.assertIn("var(--pokedex-red", header_styles)
+        self.assertIn("var(--pokedex-red", hero_styles)
+        self.assertIn("var(--signal-ink)", dex_number_styles)
+        self.assertIn(".site-header .button-ghost", styles)
+
     def test_top_three_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
             encoding="utf-8"
@@ -99,7 +133,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260907-5", response.text)
+        self.assertIn("/static/css/app.css?v=20260907-6", response.text)
         self.assertIn("/static/js/catalog.js?v=20260907-5", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
