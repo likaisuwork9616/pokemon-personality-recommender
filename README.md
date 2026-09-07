@@ -218,9 +218,6 @@ PostgreSQL → Alembic migration → CSV seed → pgvector embedding
 | 寶可夢圖鑑 | <http://localhost:8000/pokemon> |
 | 管理後台 | <http://localhost:8000/admin> |
 | Swagger UI | <http://localhost:8000/docs> |
-| OpenAPI JSON | <http://localhost:8000/openapi.json> |
-| Liveness／Readiness | <http://localhost:8000/health/live> ／ <http://localhost:8000/health/ready> |
-| Prometheus metrics | <http://localhost:8000/metrics> |
 
 停止服務：
 
