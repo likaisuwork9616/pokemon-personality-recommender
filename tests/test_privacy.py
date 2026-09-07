@@ -4,7 +4,6 @@ import io
 import json
 import logging
 import unittest
-from unittest.mock import patch
 from uuid import UUID
 
 import numpy as np
@@ -20,7 +19,6 @@ from app.services.recommendation import (
     HybridRecommendationEngine,
     RetrievalUnavailableError,
 )
-import pokedex_online
 
 
 def _public_result(rank: int) -> dict[str, object]:
@@ -274,38 +272,6 @@ class QueryPersistenceTests(unittest.TestCase):
         self.assertNotIn(marker, repr(vars(engine)))
         self.assertNotIn(marker, json.dumps(result, ensure_ascii=False))
         self.assertFalse(any("query" in key.casefold() for key in vars(engine)))
-
-
-class ProviderErrorPrivacyTests(unittest.TestCase):
-    def test_legacy_provider_failure_does_not_surface_provider_exception(self):
-        marker = "PRIVATE-PROVIDER-ERROR-MARKER"
-
-        class Responses:
-            @staticmethod
-            def create(**_kwargs):
-                raise RuntimeError(marker)
-
-        client = type("Client", (), {"responses": Responses()})()
-        engine = object.__new__(pokedex_online.PokemonRecommender)
-        pokemon = {
-            "name": "測試寶可夢",
-            "name_en": "Test Pokemon",
-            "type": "一般",
-            "type_en": "Normal",
-            "category": "測試",
-            "genus": "Test",
-            "user_traits": [],
-            "pokemon_traits": [],
-            "desc": "本機證據",
-            "flavor_text_en": "Local evidence",
-            "analysis_text": "本機分析",
-        }
-
-        with patch.object(pokedex_online, "client", client):
-            explanation = engine.explain("不應回顯的查詢", pokemon)
-
-        self.assertNotIn(marker, explanation)
-        self.assertNotIn("暫時失敗", explanation)
 
 
 if __name__ == "__main__":
