@@ -90,6 +90,7 @@ services:
       - scripts/import_pokemon.py
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:-pokemon}@db:5432/${POSTGRES_DB:-pokemon}
+      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -36,6 +37,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--database-url",
         help="Override DATABASE_URL for this command without changing the environment.",
     )
+    parser.add_argument(
+        "--artwork-base-url",
+        default=os.getenv("POKEMON_ARTWORK_BASE_URL") or None,
+        help=(
+            "Override artwork URLs with {base}/{pokedex_number:04d}.png. "
+            "Defaults to POKEMON_ARTWORK_BASE_URL when set."
+        ),
+    )
     return parser
 
 
@@ -55,6 +64,7 @@ def main() -> int:
     summary = CsvPokemonImporter(session_factory).import_file(
         args.csv,
         dry_run=args.dry_run,
+        artwork_base_url=args.artwork_base_url,
     )
     print(json.dumps(asdict(summary), ensure_ascii=False, sort_keys=True))
     return 0
