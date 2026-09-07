@@ -534,6 +534,21 @@ button:disabled {
   list-style: none;
 }
 
+.reindex-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.reindex-progress[hidden] {
+  display: none;
+}
+
+.reindex-progress progress {
+  width: 100%;
+  accent-color: var(--accent, #ffd34e);
+}
+
 .index-source-list li {
   display: grid;
   grid-template-columns: minmax(8rem, 1fr) auto;

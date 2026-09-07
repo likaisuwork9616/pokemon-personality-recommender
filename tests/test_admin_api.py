@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from hashlib import sha256
 from types import SimpleNamespace
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 
-from app.api.admin import get_admin_repository, get_reindex_service
+from app.api.admin import get_admin_repository, get_reindex_job_repository, get_reindex_service
 from app.main import create_app
 from app.repositories import AdminPokemonRepository
 from app.repositories.reindex import IndexSourceState, PokemonIndexState
@@ -251,6 +253,29 @@ class FakeReindexService:
         )
 
 
+class FakeReindexJobRepository:
+    def __init__(self) -> None:
+        self.session = FakeSession()
+        self.jobs = {}
+
+    def enqueue(self, pokemon_id):
+        if pokemon_id != 1:
+            raise LookupError(pokemon_id)
+        existing = next((job for job in self.jobs.values() if job.pokemon_id == pokemon_id and job.status in {"queued", "running"}), None)
+        if existing:
+            return existing, False
+        job = namespace(
+            id=uuid4(), pokemon_id=pokemon_id, status="queued",
+            progress_current=0, progress_total=0, embedded=0, failed=0,
+            message="等待 worker 處理", last_error=None,
+            queued_at=datetime.now(timezone.utc), started_at=None, finished_at=None,
+        )
+        self.jobs[job.id] = job
+        return job, True
+
+    def get(self, job_id):
+        return self.jobs.get(job_id)
+
 class RefreshingEngine:
     def __init__(self) -> None:
         self.refresh_calls = 0
@@ -263,6 +288,7 @@ class AdminApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repository = FakeAdminRepository()
         self.reindex_service = FakeReindexService()
+        self.reindex_jobs = FakeReindexJobRepository()
         self.runtime_engine = RefreshingEngine()
         self.auth = AdminAuth(
             AdminAuthConfig(
@@ -281,6 +307,9 @@ class AdminApiTests(unittest.TestCase):
         )
         self.application.dependency_overrides[get_reindex_service] = (
             lambda: self.reindex_service
+        )
+        self.application.dependency_overrides[get_reindex_job_repository] = (
+            lambda: self.reindex_jobs
         )
         self.context = TestClient(self.application)
         self.client = self.context.__enter__()
@@ -433,11 +462,21 @@ class AdminApiTests(unittest.TestCase):
             "/api/v1/admin/pokemon/1/reindex",
             headers={"X-CSRF-Token": csrf},
         )
-        self.assertEqual(rebuilt.status_code, 200)
-        self.assertEqual(rebuilt.json()["index"]["status"], "ready")
-        self.assertEqual(rebuilt.json()["embedded"], 1)
-        self.assertEqual(self.reindex_service.calls, 1)
-        self.assertEqual(self.reindex_service.repository.session.commits, 1)
+        self.assertEqual(rebuilt.status_code, 202)
+        self.assertEqual(rebuilt.json()["status"], "queued")
+        self.assertEqual(rebuilt.json()["progress_current"], 0)
+        self.assertEqual(self.reindex_jobs.session.commits, 1)
+
+        job_id = rebuilt.json()["id"]
+        polled = self.client.get(f"/api/v1/admin/reindex-jobs/{job_id}")
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(polled.json()["status"], "queued")
+
+        job = self.reindex_jobs.get(next(iter(self.reindex_jobs.jobs)))
+        job.status = "succeeded"
+        job.progress_current = job.progress_total = job.embedded = 1
+        completed = self.client.get(f"/api/v1/admin/reindex-jobs/{job_id}")
+        self.assertEqual(completed.json()["index"]["status"], "stale")
         self.assertEqual(self.runtime_engine.refresh_calls, 1)
 
     def test_admin_page_and_openapi_are_exposed(self):
@@ -450,6 +489,7 @@ class AdminApiTests(unittest.TestCase):
         self.assertIn("/api/v1/admin/session", paths)
         self.assertIn("/api/v1/admin/pokemon/{pokemon_id}", paths)
         self.assertIn("/api/v1/admin/pokemon/{pokemon_id}/reindex", paths)
+        self.assertIn("/api/v1/admin/reindex-jobs/{job_id}", paths)
 
 
 class AdminSchemaTests(unittest.TestCase):

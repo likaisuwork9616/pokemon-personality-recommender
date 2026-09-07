@@ -24,7 +24,7 @@
 - 預設不永久保存使用者原始描述與 query vector
 - 提供圖鑑列表、中英文名稱搜尋、分頁、屬性、世代、傳說與幻之篩選
 - 提供單一管理員後台，可新增、查看、修改、停用及恢復寶可夢
-- 修改敘述後建立新版文件，支援 embedding 重建、失敗重試與安全切換
+- 修改敘述後建立新版文件，透過 PostgreSQL 背景佇列重建 embedding，支援即時進度、失敗重試與安全切換
 - 1,025 筆寶可夢關聯資料存入 PostgreSQL
 - 384 維知識 chunk embeddings 存入 pgvector
 - 官方寶可夢 PNG 存放於 Amazon S3，透過 CloudFront 交付；PostgreSQL 只保存 URL
@@ -124,7 +124,7 @@ total = α × personality + (1 - α) × semantic
 | RAG | Google Gen AI、OpenAI Responses API | 結構化、受證據限制的推薦解釋 |
 | Migration | Alembic | schema 與種子字典版本管理 |
 | Image Delivery | Amazon S3、CloudFront、boto3 | 官方 artwork 儲存、完整性驗證與 CDN 交付 |
-| Deployment | Docker、Docker Compose | DB、migration、seed、embedding、API 編排 |
+| Deployment | Docker、Docker Compose | DB、migration、seed、embedding、背景 worker、API 編排 |
 | Test | Python `unittest` | API、資料庫、檢索、隱私、RAG 與圖片流程測試 |
 
 ## 快速啟動
@@ -175,7 +175,7 @@ docker compose up --build
 Compose 會依序執行：
 
 ```text
-PostgreSQL → Alembic migration → CSV seed → pgvector embedding → FastAPI
+PostgreSQL → Alembic migration → CSV seed → pgvector embedding → FastAPI + reindex worker
 ```
 
 第一次啟動需要建立 1,025 筆資料與 embeddings，時間會比後續啟動長。當 readiness 回傳 `ready` 後即可使用：
@@ -209,6 +209,7 @@ docker compose down
 | `PGVECTOR_SEARCH_MODE` | `hnsw` | `hnsw` 近似搜尋或 `exact` 精確基準模式 |
 | `HNSW_EF_SEARCH` | `100` | HNSW 查詢候選數，範圍 `1–1000` |
 | `HNSW_ITERATIVE_SCAN` | `strict_order` | filtered HNSW 的迭代掃描排序模式 |
+| `REINDEX_WORKER_POLL_SECONDS` | `2` | 背景 worker 查詢 PostgreSQL 佇列的間隔秒數 |
 | `LLM_PROVIDER` | `gemini` | `gemini` 或 `openai` |
 | `GEMINI_API_KEY` | 空白 | Gemini 選配金鑰 |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model 名稱 |
@@ -231,7 +232,8 @@ docker compose down
 | `GET` | `/api/v1/pokemon` | 搜尋、篩選、排序與分頁 |
 | `GET` | `/api/v1/pokemon/{id}` | 取得寶可夢詳細資料 |
 | `POST` | `/api/v1/admin/session` | 管理員登入 |
-| `GET/POST/PATCH` | `/api/v1/admin/pokemon...` | 管理資料、狀態與重建索引 |
+| `GET/POST/PATCH` | `/api/v1/admin/pokemon...` | 管理資料、狀態與排程重建索引 |
+| `GET` | `/api/v1/admin/reindex-jobs/{job_id}` | 讀取背景 reindex 進度與結果 |
 | `GET` | `/health/live` | 程序存活檢查 |
 | `GET` | `/health/ready` | DB、pgvector 與推薦引擎就緒檢查 |
 

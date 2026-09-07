@@ -178,6 +178,17 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertEqual(options["with"], {"m": 16, "ef_construction": 64})
         self.assertIn("status = 'ready'", str(options["where"]))
 
+    def test_sixth_revision_adds_durable_reindex_queue(self):
+        jobs = Base.metadata.tables["pokemon_reindex_jobs"]
+        self.assertEqual(next(iter(jobs.foreign_keys)).ondelete, "CASCADE")
+        self.assertIn("ix_reindex_jobs_claim", {item.name for item in jobs.indexes})
+        active = next(item for item in jobs.indexes if item.name == "uq_reindex_jobs_one_active_per_pokemon")
+        self.assertTrue(active.unique)
+        self.assertIn("queued", str(active.dialect_options["postgresql"]["where"]))
+
+        revision = (ROOT / "alembic" / "versions" / "20260907_0006_reindex_jobs.py").read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260907_0005"', revision)
+
 
 if __name__ == "__main__":
     unittest.main()

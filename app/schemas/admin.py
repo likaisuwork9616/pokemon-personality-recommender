@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
@@ -276,3 +277,22 @@ class AdminReindexResponse(BaseModel):
     embedded: int = Field(ge=0)
     failed: int = Field(ge=0)
     index: AdminIndexStatus
+
+
+ReindexJobStatus = Literal["queued", "running", "succeeded", "failed"]
+
+
+class AdminReindexJobResponse(BaseModel):
+    id: UUID
+    pokemon_id: int
+    status: ReindexJobStatus
+    progress_current: int = Field(ge=0)
+    progress_total: int = Field(ge=0)
+    embedded: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    message: str | None = None
+    last_error: str | None = None
+    queued_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    index: AdminIndexStatus | None = None

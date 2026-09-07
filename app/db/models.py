@@ -242,6 +242,11 @@ class Pokemon(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    reindex_jobs: Mapped[list[PokemonReindexJob]] = relationship(
+        back_populates="pokemon",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Type(Base):
@@ -791,3 +796,48 @@ class PokemonChunkEmbedding(Base):
     embedding_model: Mapped[EmbeddingModel] = relationship(
         back_populates="chunk_embeddings"
     )
+
+
+class PokemonReindexJob(Base):
+    """Durable PostgreSQL-backed background reindex work item."""
+
+    __tablename__ = "pokemon_reindex_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'succeeded', 'failed')",
+            name="status_valid",
+        ),
+        CheckConstraint("progress_current >= 0", name="progress_current_nonnegative"),
+        CheckConstraint("progress_total >= 0", name="progress_total_nonnegative"),
+        CheckConstraint("embedded >= 0", name="embedded_nonnegative"),
+        CheckConstraint("failed >= 0", name="failed_nonnegative"),
+        Index("ix_reindex_jobs_claim", "status", "queued_at", "id"),
+        Index(
+            "uq_reindex_jobs_one_active_per_pokemon",
+            "pokemon_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    pokemon_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("pokemon.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default=text("'queued'")
+    )
+    progress_current: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    progress_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    embedded: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    message: Mapped[str | None] = mapped_column(String(500))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    pokemon: Mapped[Pokemon] = relationship(back_populates="reindex_jobs")

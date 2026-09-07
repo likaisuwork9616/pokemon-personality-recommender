@@ -60,7 +60,12 @@ class PokemonReindexService:
             model_id = None
         return self.repository.index_state(pokemon, model_id)
 
-    def rebuild(self, pokemon_id: int) -> PokemonReindexSummary:
+    def rebuild(
+        self,
+        pokemon_id: int,
+        *,
+        progress_callback: Callable[[int, int, int, int, str], None] | None = None,
+    ) -> PokemonReindexSummary:
         pokemon = self.repository.get_pokemon(pokemon_id)
         if pokemon is None:
             raise PokemonNotFoundError
@@ -84,6 +89,7 @@ class PokemonReindexService:
         discovered = sum(len(items) for items in pending_by_document.values())
         embedded = 0
         failed = 0
+        self._notify(progress_callback, 0, discovered, embedded, failed, "準備建立 embeddings")
 
         encoder = None
         if discovered:
@@ -103,6 +109,7 @@ class PokemonReindexService:
                         )
                     self.repository.fail_document(document)
                     failed += len(pending)
+                self._notify(progress_callback, failed, discovered, embedded, failed, "embedding model 載入失敗")
                 return self._summary(
                     pokemon_id,
                     model.id,
@@ -145,6 +152,7 @@ class PokemonReindexService:
                         )
                     failed += len(batch)
                     document_failed = True
+                    self._notify(progress_callback, embedded + failed, discovered, embedded, failed, "部分 chunks 建立失敗")
                     continue
 
                 for candidate, vector in zip(batch, vectors):
@@ -154,6 +162,7 @@ class PokemonReindexService:
                         embedding=vector,
                     )
                     embedded += 1
+                self._notify(progress_callback, embedded + failed, discovered, embedded, failed, "正在建立 embeddings")
 
             if (
                 not document_failed
@@ -170,6 +179,11 @@ class PokemonReindexService:
             embedded,
             failed,
         )
+
+    @staticmethod
+    def _notify(callback, current, total, embedded, failed, message) -> None:
+        if callback is not None:
+            callback(current, total, embedded, failed, message)
 
     def _summary(
         self,

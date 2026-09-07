@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -13,6 +14,7 @@ from app.api.catalog import _catalog_item, _images
 from app.api.deps import get_session
 from app.repositories.admin import AdminPokemonRepository
 from app.repositories.reindex import PokemonIndexState, PokemonReindexRepository
+from app.repositories.reindex_jobs import PokemonReindexJobRepository
 from app.repositories.vector import VectorRepository
 from app.schemas.admin import (
     AdminIndexSourceStatus,
@@ -23,7 +25,7 @@ from app.schemas.admin import (
     AdminPokemonPage,
     AdminPokemonSummary,
     AdminPokemonUpdate,
-    AdminReindexResponse,
+    AdminReindexJobResponse,
     AdminSessionResponse,
 )
 from app.schemas.catalog import CatalogDescription, CatalogImage, CatalogStats
@@ -38,7 +40,6 @@ from app.services.admin_auth import (
 from app.services.reindex import (
     PokemonNotFoundError,
     PokemonReindexService,
-    ReindexUnavailableError,
 )
 
 
@@ -62,6 +63,12 @@ def get_reindex_service(
         PokemonReindexRepository(session),
         VectorRepository(session),
     )
+
+
+def get_reindex_job_repository(
+    session: Annotated[Session, Depends(get_session)],
+) -> PokemonReindexJobRepository:
+    return PokemonReindexJobRepository(session)
 
 
 def require_admin(
@@ -171,6 +178,24 @@ def _index_status(state: PokemonIndexState) -> AdminIndexStatus:
         pokemon_id=state.pokemon_id,
         status=state.status,
         sources=[AdminIndexSourceStatus(**vars(item)) for item in state.sources],
+    )
+
+
+def _job_response(job: Any, index: AdminIndexStatus | None = None) -> AdminReindexJobResponse:
+    return AdminReindexJobResponse(
+        id=job.id,
+        pokemon_id=job.pokemon_id,
+        status=job.status,
+        progress_current=job.progress_current,
+        progress_total=job.progress_total,
+        embedded=job.embedded,
+        failed=job.failed,
+        message=job.message,
+        last_error=job.last_error,
+        queued_at=job.queued_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        index=index,
     )
 
 
@@ -336,51 +361,59 @@ def pokemon_index_status(
 
 @router.post(
     "/pokemon/{pokemon_id}/reindex",
-    response_model=AdminReindexResponse,
-    summary="重新建立知識向量",
+    response_model=AdminReindexJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="將知識向量重建工作加入背景佇列",
 )
 def reindex_pokemon(
-    request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
-    service: Annotated[PokemonReindexService, Depends(get_reindex_service)],
-) -> AdminReindexResponse:
+    repository: Annotated[PokemonReindexJobRepository, Depends(get_reindex_job_repository)],
+) -> AdminReindexJobResponse:
     try:
-        summary = service.rebuild(pokemon_id)
-        service.repository.session.commit()
-    except PokemonNotFoundError:
+        job, _created = repository.enqueue(pokemon_id)
+        repository.session.commit()
+    except LookupError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "pokemon_not_found", "message": "找不到指定的寶可夢。"},
         ) from None
-    except ReindexUnavailableError:
-        service.repository.session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "code": "reindex_unavailable",
-                "message": "目前沒有可用的 embedding model。",
-            },
-        ) from None
     except IntegrityError:
-        service.repository.session.rollback()
+        repository.session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": "reindex_conflict",
-                "message": "索引資料已變更，請重新載入後再試。",
+                "code": "reindex_job_conflict",
+                "message": "此寶可夢已有排隊中或執行中的重建工作。",
             },
         ) from None
-    if summary.failed == 0:
-        _refresh_runtime_profiles(request)
-    return AdminReindexResponse(
-        pokemon_id=summary.pokemon_id,
-        embedding_model_id=summary.embedding_model_id,
-        discovered=summary.discovered,
-        embedded=summary.embedded,
-        failed=summary.failed,
-        index=_index_status(summary.index),
-    )
+    return _job_response(job)
+
+
+@router.get(
+    "/reindex-jobs/{job_id}",
+    response_model=AdminReindexJobResponse,
+    summary="查看背景索引工作的即時進度",
+)
+def reindex_job_status(
+    request: Request,
+    job_id: UUID,
+    _admin_session: Annotated[AdminSession, Depends(require_admin)],
+    repository: Annotated[PokemonReindexJobRepository, Depends(get_reindex_job_repository)],
+    service: Annotated[PokemonReindexService, Depends(get_reindex_service)],
+) -> AdminReindexJobResponse:
+    job = repository.get(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "reindex_job_not_found", "message": "找不到指定的重建工作。"},
+        )
+    index = None
+    if job.status in {"succeeded", "failed"}:
+        index = _index_status(service.status(job.pokemon_id))
+        if job.status == "succeeded":
+            _refresh_runtime_profiles(request)
+    return _job_response(job, index)
 
 
 @router.post(
