@@ -6,7 +6,9 @@ from uuid import uuid4
 
 import numpy as np
 import pandas as pd
+from fastapi.testclient import TestClient
 
+from app.main import create_app
 from app.services.hybrid_retrieval import FusedChunkHit, PokemonRetrievalCandidate
 from app.services.recommendation import (
     HybridRecommendationEngine,
@@ -316,6 +318,59 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertEqual(engine.profile_engine.traits, traits)
         self.assertEqual(engine.profile_engine.persona_keywords[traits[3]], ["詞3"])
         self.assertEqual(engine.profile_engine.persona_vectors.shape, (3, 16))
+
+    def test_failed_personality_refresh_preserves_snapshot_and_self_heals_readiness(self):
+        traits = tuple(f"恢復特質{index}" for index in range(16))
+
+        class VersionedPersonality(_PersonalityRepository):
+            @staticmethod
+            def revision():
+                return 2
+
+            @staticmethod
+            def catalog():
+                return SimpleNamespace(
+                    trait_names=traits,
+                    synonyms_by_trait={
+                        trait: (f"詞{index}",)
+                        for index, trait in enumerate(traits)
+                    },
+                )
+
+        engine, original, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)],
+            personality_repository=VersionedPersonality(),
+        )
+        engine._personality_revision = 1
+        original_state = engine._profile_state
+        incomplete_catalog = SimpleNamespace(
+            trait_names=traits,
+            synonyms_by_trait={trait: ("詞",) for trait in traits[:-1]},
+        )
+
+        with self.assertRaises(KeyError):
+            engine.refresh_personality_catalog(incomplete_catalog, revision=2)
+
+        self.assertIs(engine.profile_engine, original)
+        self.assertIs(engine._profile_state, original_state)
+        self.assertEqual(engine._personality_revision, 1)
+        self.assertFalse(engine.personality_refresh_healthy)
+
+        with TestClient(create_app(lambda: engine)) as client:
+            degraded = client.get("/health/ready")
+            recovered_request = client.post(
+                "/api/v1/recommendations",
+                json={"text": "安靜守護夥伴"},
+            )
+            recovered = client.get("/health/ready")
+
+        self.assertEqual(degraded.status_code, 503)
+        self.assertEqual(degraded.json()["reason"], "personality_refresh_pending")
+        self.assertEqual(recovered_request.status_code, 200)
+        self.assertEqual(recovered.json(), {"status": "ready"})
+        self.assertTrue(engine.personality_refresh_healthy)
+        self.assertEqual(engine._personality_revision, 2)
+        self.assertEqual(engine.profile_engine.traits, traits)
 
     def test_changed_database_revision_self_refreshes_before_scoring(self):
         traits = tuple(f"跨程序特質{index}" for index in range(16))
