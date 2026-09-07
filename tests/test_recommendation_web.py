@@ -40,6 +40,11 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("generate_explanation: explainToggle.checked", source)
         self.assertIn("payload.results.length !== 3", source)
         self.assertIn("textContent", source)
+        self.assertIn('description_zh: "中文圖鑑敘述"', source)
+        self.assertIn('analysis_text: "人格分析"', source)
+        self.assertIn('"zh-Hant": "繁體中文"', source)
+        self.assertIn("evidenceKindLabel(evidence.source)", source)
+        self.assertIn("languageLabel(evidence.language_code)", source)
         for forbidden in (
             "innerHTML",
             "outerHTML",
