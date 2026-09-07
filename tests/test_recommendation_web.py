@@ -29,7 +29,8 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertNotIn('id="generate-explanation" type="checkbox" checked', response.text)
         self.assertIn('id="recommendation-grid"', response.text)
         self.assertIn("原始文字與 query vector", response.text)
-        self.assertIn('/static/js/recommendation.js', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260907-2', response.text)
+        self.assertIn('/static/css/app.css?v=20260907-2', response.text)
 
     def test_client_calls_v1_api_without_browser_persistence_or_html_injection(self):
         source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -61,6 +62,25 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('href="/">人格推薦</a>', response.text)
+
+    def test_top_three_images_remain_visible_on_narrow_screens(self):
+        script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
+            encoding="utf-8"
+        )
+        narrow_styles = styles.split("@media (max-width: 34rem)", maxsplit=1)[1]
+
+        self.assertIn("safeImageUrl(pokemon.image_url)", script)
+        self.assertIn("officialArtworkUrl(pokemon.pokedex_number)", script)
+        self.assertIn("imageShell.append(image)", script)
+        self.assertIn('image.referrerPolicy = "no-referrer"', script)
+        self.assertIn("image.src = fallbackImageUrl", script)
+        self.assertIn("grid-area: 1 / 1", styles)
+        self.assertIn("grid-template-columns: auto minmax(0, 1fr) 4.2rem", narrow_styles)
+        self.assertIn(".recommendation-image {\n    display: grid", narrow_styles)
+        self.assertNotIn(".recommendation-image {\n    display: none", narrow_styles)
 
 
 if __name__ == "__main__":
