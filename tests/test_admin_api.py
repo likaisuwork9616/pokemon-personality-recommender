@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import logging
 import unittest
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -328,12 +330,18 @@ class RefreshingEngine:
     def __init__(self) -> None:
         self.refresh_calls = 0
         self.personality_refresh_calls = 0
+        self.personality_refresh_healthy = True
+        self.personality_refresh_failure_message: str | None = None
 
     def refresh_profiles(self):
         self.refresh_calls += 1
 
     def refresh_personality_catalog(self, _catalog, *, revision=None):
         self.personality_refresh_calls += 1
+        if self.personality_refresh_failure_message is not None:
+            self.personality_refresh_healthy = False
+            raise RuntimeError(self.personality_refresh_failure_message)
+        self.personality_refresh_healthy = True
 
 
 class AdminApiTests(unittest.TestCase):
@@ -601,6 +609,67 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(null_update.status_code, 422)
         self.assertEqual(self.personality_repository.session.commits, 4)
         self.assertEqual(self.runtime_engine.personality_refresh_calls, 4)
+
+    def test_committed_personality_refresh_failure_is_pending_and_observable(self):
+        csrf, _set_cookie = self.login()
+        headers = {"X-CSRF-Token": csrf}
+        private_marker = "PRIVATE-PERSONALITY-REFRESH-DETAIL"
+        self.runtime_engine.personality_refresh_failure_message = private_marker
+        stream = io.StringIO()
+        logger = logging.getLogger("pokemon.admin")
+        handler = logging.StreamHandler(stream)
+        previous_level = logger.level
+        logger.setLevel(logging.WARNING)
+        logger.addHandler(handler)
+        try:
+            pending = self.client.post(
+                "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+                headers=headers,
+                json={"term": "暫存詞", "language_code": "zh-Hant", "weight": 2.0},
+            )
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+
+        self.assertEqual(pending.status_code, 202)
+        self.assertEqual(
+            pending.headers["x-personality-refresh-status"],
+            "pending",
+        )
+        self.assertEqual(self.personality_repository.session.commits, 1)
+        self.assertEqual(self.personality_repository.session.rollbacks, 0)
+        self.assertEqual(self.personality_repository.current_revision, 2)
+        self.assertIsNotNone(
+            self.personality_repository.get_synonym("loyal_guardian", "暫存詞")
+        )
+
+        degraded = self.client.get("/health/ready")
+        degraded_metrics = self.client.get("/metrics").text
+        log_output = stream.getvalue()
+        self.assertEqual(degraded.status_code, 503)
+        self.assertEqual(degraded.json()["reason"], "personality_refresh_pending")
+        self.assertIn("personality_refresh_failed", log_output)
+        self.assertIn("RuntimeError", log_output)
+        self.assertNotIn(private_marker, log_output)
+        self.assertIn("pokemon_personality_refresh_failures_total 1", degraded_metrics)
+        self.assertIn("pokemon_personality_refresh_healthy 0", degraded_metrics)
+
+        self.runtime_engine.personality_refresh_failure_message = None
+        recovered = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"original_term": "暫存詞", "weight": 2.5},
+        )
+
+        self.assertEqual(recovered.status_code, 200)
+        self.assertEqual(
+            recovered.headers["x-personality-refresh-status"],
+            "ready",
+        )
+        self.assertEqual(self.client.get("/health/ready").json(), {"status": "ready"})
+        recovered_metrics = self.client.get("/metrics").text
+        self.assertIn("pokemon_personality_refresh_failures_total 1", recovered_metrics)
+        self.assertIn("pokemon_personality_refresh_healthy 1", recovered_metrics)
 
 
 class AdminSchemaTests(unittest.TestCase):

@@ -57,6 +57,7 @@ class HybridRecommendationEngine:
         self._profile_refresh_lock = Lock()
         self._profile_records_loader = profile_records_loader
         self._personality_revision = personality_revision
+        self._personality_refresh_error: str | None = None
 
         database_ids = self._database_id_map(profile_engine)
         self._profile_state = (profile_engine, database_ids)
@@ -96,21 +97,46 @@ class HybridRecommendationEngine:
         """Atomically rebuild profile vectors after vocabulary administration."""
 
         with self._profile_refresh_lock:
-            if revision is not None and revision == self._personality_revision:
+            if (
+                revision is not None
+                and revision == self._personality_revision
+                and self._personality_refresh_error is None
+            ):
                 return len(catalog.trait_names)
             current, database_ids = self._profile_state
-            refreshed = copy(current)
-            refreshed.traits = tuple(catalog.trait_names)
-            refreshed.persona_keywords = {
-                trait: list(catalog.synonyms_by_trait[trait])
-                for trait in refreshed.traits
-            }
-            refreshed.persona_vectors = refreshed.build_persona_vectors()
+            try:
+                refreshed = copy(current)
+                refreshed.traits = tuple(catalog.trait_names)
+                refreshed.persona_keywords = {
+                    trait: list(catalog.synonyms_by_trait[trait])
+                    for trait in refreshed.traits
+                }
+                refreshed.persona_vectors = refreshed.build_persona_vectors()
+            except Exception:
+                # Keep a stable, low-cardinality health value. The caller may log
+                # the exception type, but vocabulary or exception text must never
+                # become part of readiness or metrics output.
+                self._personality_refresh_error = "refresh_failed"
+                raise
             self.profile_engine = refreshed
             self._profile_state = (refreshed, database_ids)
             if revision is not None:
                 self._personality_revision = revision
+            self._personality_refresh_error = None
             return len(refreshed.traits)
+
+    @property
+    def personality_refresh_healthy(self) -> bool:
+        """Report whether the latest vocabulary snapshot refresh succeeded."""
+
+        with self._profile_refresh_lock:
+            return self._personality_refresh_error is None
+
+    def mark_personality_refresh_failed(self) -> None:
+        """Mark a pre-refresh catalog/revision read failure as degraded."""
+
+        with self._profile_refresh_lock:
+            self._personality_refresh_error = "refresh_failed"
 
     def _refresh_personality_if_stale(self, repository: Any) -> None:
         revision_reader = getattr(repository, "revision", None)
@@ -118,10 +144,10 @@ class HybridRecommendationEngine:
         if not callable(revision_reader) or not callable(catalog_reader):
             return
         revision = int(revision_reader())
-        if self._personality_revision is None:
+        if self._personality_revision is None and self.personality_refresh_healthy:
             self._personality_revision = revision
             return
-        if revision != self._personality_revision:
+        if revision != self._personality_revision or not self.personality_refresh_healthy:
             self.refresh_personality_catalog(catalog_reader(), revision=revision)
 
     def recommend(self, user_text: str, top_k: int = 3) -> list[dict[str, Any]]:

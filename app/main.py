@@ -24,6 +24,16 @@ from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
 
+
+def _personality_refresh_healthy(engine: Any) -> bool:
+    if engine is None:
+        return False
+    try:
+        return bool(getattr(engine, "personality_refresh_healthy", True))
+    except Exception:
+        return False
+
+
 def _default_engine_factory() -> Any:
     import pandas as pd
 
@@ -99,6 +109,7 @@ def create_app(
     @application.middleware("http")
     async def observe_requests(request: Request, call_next):
         request_id = uuid4().hex
+        request.state.request_id = request_id
         started = perf_counter()
         status_code = 500
         try:
@@ -154,12 +165,25 @@ def create_app(
     async def live() -> dict[str, str]: return {"status": "ok"}
     @application.get("/health/ready", tags=["health"])
     async def ready() -> JSONResponse:
-        is_ready = getattr(application.state, "recommendation_engine", None) is not None
-        return JSONResponse(status_code=200 if is_ready else 503, content={"status": "ready" if is_ready else "not_ready"})
+        engine = getattr(application.state, "recommendation_engine", None)
+        engine_available = engine is not None
+        personality_healthy = _personality_refresh_healthy(engine)
+        is_ready = engine_available and personality_healthy
+        content = {"status": "ready" if is_ready else "not_ready"}
+        if not is_ready:
+            content["reason"] = (
+                "personality_refresh_pending"
+                if engine_available and not personality_healthy
+                else "engine_unavailable"
+            )
+        return JSONResponse(status_code=200 if is_ready else 503, content=content)
     @application.get("/metrics", tags=["observability"], include_in_schema=False)
     async def metrics() -> PlainTextResponse:
+        engine = getattr(application.state, "recommendation_engine", None)
         return PlainTextResponse(
-            application.state.request_metrics.render_prometheus(),
+            application.state.request_metrics.render_prometheus(
+                personality_refresh_healthy=_personality_refresh_healthy(engine),
+            ),
             media_type="text/plain; version=0.0.4",
         )
     application.add_api_route("/recommend", create_recommendation, methods=["POST"], response_model=RecommendationResponse, deprecated=True)
