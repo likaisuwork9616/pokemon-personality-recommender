@@ -14,7 +14,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.admin import get_admin_personality_repository, get_admin_repository, get_reindex_job_repository, get_reindex_service
 from app.main import create_app
+from app.personality_vocabulary import canonicalize_personality_text
 from app.repositories import AdminPokemonRepository
+from app.repositories.personality_admin import AdminPersonalityRepository
 from app.repositories.reindex import IndexSourceState, PokemonIndexState
 from app.schemas.admin import AdminPokemonCreate, AdminPokemonUpdate
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
@@ -308,23 +310,45 @@ class FakePersonalityRepository:
         return self.trait if code == self.trait.code else None
 
     def rename_trait(self, trait, name_zh):
-        trait.name_zh = name_zh
-        return trait
+        display, normalized = AdminPersonalityRepository.normalize_trait_name(name_zh)
+        if canonicalize_personality_text(trait.name_zh) == normalized:
+            return False
+        trait.name_zh = display
+        return True
 
     def add_synonym(self, trait, **values):
-        item = namespace(**values)
+        display, normalized = AdminPersonalityRepository.normalize_term(values["term"])
+        item = namespace(**{**values, "term": display, "normalized_term": normalized})
         trait.synonyms.append(item)
         return item
 
     def get_synonym(self, trait_code, term):
         if trait_code != self.trait.code:
             return None
-        return next((item for item in self.trait.synonyms if item.term == term), None)
+        normalized = canonicalize_personality_text(term)
+        return next(
+            (
+                item
+                for item in self.trait.synonyms
+                if canonicalize_personality_text(item.term) == normalized
+            ),
+            None,
+        )
 
     def update_synonym(self, item, **values):
+        changed = False
         for key, value in values.items():
-            setattr(item, key, value)
-        return item
+            if key == "term":
+                display, normalized = AdminPersonalityRepository.normalize_term(value)
+                if normalized == canonicalize_personality_text(item.term):
+                    continue
+                item.term = display
+                item.normalized_term = normalized
+                changed = True
+            elif getattr(item, key) != value:
+                setattr(item, key, value)
+                changed = True
+        return changed
 
 class RefreshingEngine:
     def __init__(self) -> None:
@@ -609,6 +633,56 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(null_update.status_code, 422)
         self.assertEqual(self.personality_repository.session.commits, 4)
         self.assertEqual(self.runtime_engine.personality_refresh_calls, 4)
+
+    def test_normalized_vocabulary_noops_skip_transaction_and_refresh(self):
+        self.personality_repository.trait.name_zh = "Guardian"
+        self.personality_repository.trait.synonyms.append(
+            namespace(
+                term="Reliable",
+                normalized_term="reliable",
+                language_code="en",
+                weight=2.0,
+                is_active=True,
+            )
+        )
+        csrf, _set_cookie = self.login()
+        headers = {"X-CSRF-Token": csrf}
+
+        trait_noop = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian",
+            headers=headers,
+            json={"name_zh": "ＧＵＡＲＤＩＡＮ"},
+        )
+        synonym_noop = self.client.patch(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"original_term": "ＲＥＬＩＡＢＬＥ", "term": "reliable"},
+        )
+
+        self.assertEqual(trait_noop.status_code, 200)
+        self.assertEqual(trait_noop.json()["name_zh"], "Guardian")
+        self.assertEqual(trait_noop.headers["x-personality-refresh-status"], "ready")
+        self.assertEqual(synonym_noop.status_code, 200)
+        self.assertEqual(synonym_noop.json()["term"], "Reliable")
+        self.assertEqual(synonym_noop.headers["x-personality-refresh-status"], "ready")
+        self.assertEqual(self.personality_repository.session.commits, 0)
+        self.assertEqual(self.personality_repository.current_revision, 1)
+        self.assertEqual(self.runtime_engine.personality_refresh_calls, 0)
+
+        control_character = self.client.post(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"term": "守\u200b護"},
+        )
+        expanded_too_long = self.client.post(
+            "/api/v1/admin/personality/traits/loyal_guardian/synonyms",
+            headers=headers,
+            json={"term": "ß" * 80},
+        )
+        self.assertEqual(control_character.status_code, 422)
+        self.assertEqual(expanded_too_long.status_code, 422)
+        self.assertEqual(self.personality_repository.session.commits, 0)
+        self.assertEqual(self.runtime_engine.personality_refresh_calls, 0)
 
     def test_committed_personality_refresh_failure_is_pending_and_observable(self):
         csrf, _set_cookie = self.login()
