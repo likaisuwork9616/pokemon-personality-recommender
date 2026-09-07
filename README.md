@@ -1,529 +1,398 @@
-# 🧠 Pokémon Personality Recommender
+# Pokémon Personality Recommender
 
-# 🐾 寶可夢人格推薦系統
+> 以 PostgreSQL、pgvector、Hybrid Retrieval 與 Grounded RAG，從使用者的自然語言描述中推薦 Top 3 人格相契的寶可夢。
 
-這是一個使用 Python 製作的  **寶可夢人格推薦系統** 。
-使用者只要輸入自己的個性、喜好、情緒或生活習慣，系統就會根據寶可夢圖鑑介紹、屬性權重、人格特質與語意相似度，推薦出一隻最符合使用者個性的寶可夢。
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![pgvector](https://img.shields.io/badge/pgvector-384d-336791)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Status](https://img.shields.io/badge/MVP-complete-success)
 
----
+這不是單純依照屬性或關鍵字配對的測驗。系統會把使用者描述轉為語意向量，結合中文全文搜尋、SQL 人格詞彙、可追蹤的圖鑑知識 chunks 與分數融合，最後產生三個可驗證的推薦結果。使用者可選擇是否呼叫 Gemini 或 OpenAI；模型只能根據本次檢索證據解釋契合原因。
 
-## 🌟 專題簡介
+## 目前完成的功能
 
-本專題的核心想法是：
+- 輸入個性、興趣或生活習慣，固定取得 Top 3 寶可夢推薦
+- 顯示語意分數、人格分數、總分及匹配證據
+- 將圖鑑資料版本化為可追蹤的 knowledge documents 與 chunks
+- 使用 pgvector Dense Search 與 jieba／PostgreSQL FTS 進行 Hybrid Retrieval
+- 以 Reciprocal Rank Fusion（RRF，`k=60`）融合兩條檢索分支
+- 將人格特質與中英文同義詞存入 PostgreSQL，由 SQL 搜尋匹配
+- 使用 Gemini 或 OpenAI 產生有 citation allowlist 的 Grounded RAG 解釋
+- 外部模型失敗、逾時、格式錯誤或引用越界時，自動使用本地證據式解釋
+- 預設不永久保存使用者原始描述與 query vector
+- 提供圖鑑列表、中英文名稱搜尋、分頁、屬性、世代、傳說與幻之篩選
+- 提供單一管理員後台，可新增、查看、修改、停用及恢復寶可夢
+- 修改敘述後建立新版文件，支援 embedding 重建、失敗重試與安全切換
+- 1,025 筆寶可夢關聯資料存入 PostgreSQL
+- 384 維知識 chunk embeddings 存入 pgvector
+- 官方寶可夢 PNG 存放於 Amazon S3，透過 CloudFront 交付；PostgreSQL 只保存 URL
+- FastAPI 自動產生 Swagger／OpenAPI 文件
+- Alembic 管理 PostgreSQL schema 版本
+- Docker Compose 一次完成 migration、seed、embedding 初始化與 API 啟動
 
-> 如果一個人輸入自己的個性，AI 能不能幫他找到一隻最像他的寶可夢？
+## 系統架構
 
-例如使用者輸入：
+```mermaid
+flowchart LR
+    U[使用者瀏覽器] --> WEB[FastAPI + Jinja2]
+    A[管理員後台] --> WEB
+
+    WEB --> API[REST API /api/v1]
+    API --> QE[Query Encoder<br/>request scope]
+    QE --> D[pgvector Dense Top 50]
+    API --> L[jieba + PostgreSQL FTS Top 50]
+    D --> RRF[RRF Fusion]
+    L --> RRF
+    RRF --> PS[SQL 人格詞彙與分數融合]
+    PS --> TOP3[Top 3 + 分數 + 證據]
+
+    TOP3 -->|使用者勾選 AI 解釋| RAG[Grounded RAG]
+    RAG --> LLM[Gemini 或 OpenAI]
+    RAG --> FALLBACK[本地 evidence fallback]
+
+    API <--> PG[(PostgreSQL + pgvector)]
+    WEB --> CDN[CloudFront]
+    CDN --> S3[(Amazon S3 Artwork)]
+```
+
+## 推薦流程
+
+1. 驗證使用者輸入，且不在錯誤內容中回傳原文。
+2. 使用 `paraphrase-multilingual-MiniLM-L12-v2` 建立 384 維 query vector。
+3. 分別執行 pgvector exact cosine search 與中文斷詞全文搜尋，各取 Top 50 chunks。
+4. 以 RRF 合併同一 chunk 的兩條排名，再限制每隻寶可夢最多三段證據，避免 chunks 數量灌票。
+5. 從 PostgreSQL 人格字典比對輸入中的特質與同義詞，建立 16 維人格向量。
+6. 合併語意與人格分數，以穩定 tie-break 規則選出唯一 Top 3。
+7. 若使用者開啟 AI 解釋，將本次證據包交給指定模型；否則不呼叫任何外部 LLM。
+
+最終分數概念如下：
 
 ```text
-我喜歡吃東西、睡覺，不太喜歡出門，個性比較安靜。
+total = α × personality + (1 - α) × semantic
 ```
 
-系統會分析這段文字，並從寶可夢資料中找出最符合的人格方向，最後推薦一隻寶可夢。
+`α` 會依輸入中可辨識的人格訊號調整，範圍為 `0.35–0.80`。語意分數來自 Hybrid Retrieval，人格分數則是使用者與寶可夢人格向量的 cosine similarity。
 
----
+## Grounded RAG 設計
 
-## 🎯 專題目標
+推薦排名在呼叫 LLM 前就已確定，模型不參與排序，只負責說明結果。
 
-本專題不是單純查詢寶可夢，而是嘗試結合：
+- 每段證據都具有 `document_id`、`chunk_id`、`content_hash` 與 `evidence_id`
+- 模型輸出必須符合結構化 schema
+- 每個理由只能引用該推薦結果自己的 evidence ID
+- 提示詞將使用者文字與檢索內容標記為不可信資料，降低 prompt injection 影響
+- 英文原始檢索文字不會直接成為使用者看到的推薦理由
+- 無 API key、逾時、輸出格式錯誤或 citation 無效時，改用繁體中文本地解釋
+- `LLM_PROVIDER=gemini|openai` 明確選擇供應商，不會在兩家付費模型間自動轉送
 
-* 🐍 Python 程式設計
-* 📊 CSV 資料整理
-* 🔍 中文文字分析
-* 🧠 人格特質判斷
-* 🧬 寶可夢屬性權重
-* 📐 語意相似度計算
-* 🤖 Gemini AI 推薦原因生成
-* 🧪 機器學習資料處理
-* 📈 增加機器學習可用數據
-* 🌏 中文習性 + 英文習性 + 中文介紹 + 英文介紹配對
-* 🌐 Gradio 網頁介面
+## 隱私與安全
 
-建立一個可以互動、可以分析、也可以解釋推薦原因的寶可夢人格推薦系統。
+- 使用者原始描述與 query vector 只存在單次 request scope，預設不寫入 PostgreSQL
+- 推薦成功、驗證失敗與例外路徑都不記錄原始輸入或向量
+- 未勾選 AI 解釋時，不建立任何外部 LLM 請求
+- 勾選 AI 解釋時，使用者文字與證據會傳送到所選 provider，但不寫入本專案資料庫
+- 管理後台使用簽章且有期限的 HttpOnly cookie、`SameSite=Strict` 與 CSRF token
+- 公開 API 與推薦流程只讀取 active、current、ready 的資料
+- 圖片二進位檔、上傳 manifest、AWS 憑證、`.env` 與資料庫備份均不進 Git
 
----
+## 技術棧
 
-## 📌 目前完成進度
+| 分層 | 技術 | 用途 |
+| --- | --- | --- |
+| Web／API | FastAPI、Uvicorn、Jinja2、原生 JavaScript | 頁面、REST API、Swagger 與管理後台 |
+| Database | PostgreSQL 16、SQLAlchemy 2、psycopg | 關聯資料、交易與 repository layer |
+| Vector Search | pgvector、sentence-transformers | 384 維 embeddings 與 exact cosine search |
+| Text Retrieval | jieba、PostgreSQL Full Text Search | 中文斷詞與 lexical search |
+| Ranking | RRF、NumPy、scikit-learn | Hybrid Retrieval 與人格分數融合 |
+| RAG | Google Gen AI、OpenAI Responses API | 結構化、受證據限制的推薦解釋 |
+| Migration | Alembic | schema 與種子字典版本管理 |
+| Image Delivery | Amazon S3、CloudFront、boto3 | 官方 artwork 儲存、完整性驗證與 CDN 交付 |
+| Deployment | Docker、Docker Compose | DB、migration、seed、embedding、API 編排 |
+| Test | Python `unittest` | API、資料庫、檢索、隱私、RAG 與圖片流程測試 |
 
-目前專題已完成以下功能：
+## 快速啟動
 
-### ✅ 1. 寶可夢資料整理
+### 1. 需求
 
-已整理寶可夢圖鑑資料，資料內容包含：
+- Docker Desktop，並已啟用 Docker Compose v2
+- 首次啟動可連線下載 Python packages 與 Hugging Face embedding model
+- 至少約 4 GB 可用記憶體供 PostgreSQL、模型與 API 使用
 
-* 圖鑑編號
-* 寶可夢中文名稱
-* 寶可夢屬性
-* 寶可夢分類
-* 中文寶可夢介紹
-* 英文寶可夢介紹
-* 中文習性 / 人格分析文字
-* 英文習性 / 英文 flavor text
-* 寶可夢圖片網址
+Gemini／OpenAI API key 都是選配。未設定 key 時，推薦與本地證據式解釋仍可使用。
 
-目前資料已從單純中文圖鑑資料，升級成 **中文 + 英文混合資料集**。系統會同時參考中文習性、英文習性、中文介紹與英文介紹，讓語意比對資料更完整。
+### 2. 建立環境設定
 
----
+Windows PowerShell：
 
-### ✅ 2. 機器學習資料處理
-
-本專題已加入機器學習前處理概念，將寶可夢資料整理成適合模型比對的格式。
-
-目前處理方式包含：
-
-* 清理 CSV 欄位資料
-* 整合中文與英文欄位
-* 將寶可夢介紹與習性文字合併成語意比對文本
-* 使用 `sentence-transformers` 將文字轉成 embedding 向量
-* 使用 cosine similarity 計算使用者輸入與寶可夢資料的相似度
-
-這讓系統不只是單純查詢文字，而是可以用機器學習的方式，把文字轉成向量後再進行比對。
-
----
-
-### ✅ 3. 增加機器學習的數據
-
-原本系統主要依靠中文圖鑑介紹進行推薦，現在進一步增加更多可供機器學習比對的資料來源。
-
-新增或強化的資料包含：
-
-* 中文名稱 `name_zh`
-* 英文名稱 `name_en`
-* 中文屬性 `type_zh`
-* 英文屬性 `type_1` / `type_2`
-* 中文分類 `category_zh`
-* 英文分類 `genus`
-* 中文介紹 `description_zh`
-* 英文介紹 / 英文習性 `flavor_text_en`
-* 中英整合分析文字 `analysis_text`
-
-資料越完整，模型在比對使用者個性時，就越能找到語意接近的寶可夢。
-
----
-
-### ✅ 4. 使用者文字輸入
-
-使用者可以輸入一段描述自己的文字，例如：
-
-```text
-我是一個喜歡安靜、不太愛說話，但是很重視朋友的人。
+```powershell
+Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-系統會根據輸入內容進行分析。
-
----
-
-### ✅ 5. 人格關鍵字判斷
-
-系統會根據使用者輸入的文字，分析可能的人格方向，例如：
-
-* 🔥 熱情
-* 🌊 溫柔
-* 🧊 冷靜
-* ⚡ 行動派
-* 🛡️ 守護型
-* 🌙 內向
-* ☀️ 外向
-* 🧠 理性
-* 💗 感性
-
-這些人格方向會影響最後推薦的寶可夢結果。
-
----
-
-### ✅ 6. 寶可夢屬性權重
-
-系統會根據寶可夢的屬性進行人格傾向分析。
-
-例如：
-
-| 屬性      | 可能代表的人格方向 |
-| --------- | ------------------ |
-| 🔥 火     | 熱情、行動、衝動   |
-| 🌊 水     | 溫柔、穩定、照顧   |
-| 🌱 草     | 自然、和平、療癒   |
-| ⚡ 電     | 活潑、快速、行動派 |
-| 👻 幽靈   | 神秘、孤獨、內省   |
-| 🧠 超能力 | 理性、分析、思考   |
-| 🐉 龍     | 強大、自信、領導   |
-| 🛡️ 鋼   | 穩重、防禦、可靠   |
-
-這讓系統不只看文字，也能參考寶可夢本身的屬性特色。
-
----
-
-### ✅ 7. 語意相似度分析
-
-系統會將使用者輸入的文字，和寶可夢的 **中文習性 + 英文習性 + 中文介紹 + 英文介紹** 進行語意比對。
-
-也就是說，系統不是只找完全一樣的字，而是會嘗試理解中文與英文資料中意思是否接近。
-
-例如：
-
-```text
-使用者輸入：我喜歡安靜，不喜歡太吵的地方
-```
-
-可能會對應到：
-
-```text
-冷靜、內向、孤獨、觀察型人格
-```
-
-這比單純關鍵字搜尋更有彈性。
-
----
-
-### ✅ 8. Gemini AI 推薦理由
-
-系統會使用 Gemini API 產生自然語言推薦理由。
-
-例如：
-
-```text
-這隻寶可夢給人的感覺比較安靜穩定，和你描述中喜歡獨處、重視內心感受的特質相近，因此系統推薦牠作為你的代表寶可夢。
-```
-
-目前 Gemini 主要用在最後的文字說明，避免 API 額度浪費。
-
----
-
-### ✅ 9. Gradio 網頁介面
-
-目前已經製作 Gradio 網頁介面。
-
-使用者可以在網頁中輸入文字，系統會顯示：
-
-* 推薦寶可夢名稱
-* 寶可夢分類
-* 寶可夢屬性
-* 寶可夢圖片
-* 人格契合度
-* AI 分析原因
-
----
-
-## 🧩 系統流程
-
-整體流程如下：
-
-```text
-使用者輸入個性描述
-        ↓
-檢查輸入內容
-        ↓
-分析人格關鍵字
-        ↓
-計算使用者文字與中文/英文習性、中文/英文介紹的語意相似度
-        ↓
-加入寶可夢屬性人格權重
-        ↓
-計算最終推薦分數
-        ↓
-推薦最符合的寶可夢
-        ↓
-使用 Gemini 產生推薦理由
-        ↓
-在 Gradio 網頁顯示結果
-```
-
----
-
-## 🧮 推薦分數概念
-
-目前推薦系統主要參考：
-
-```text
-最終推薦分數 =
-語意相似度分數
-+ 屬性人格分數
-+ 關鍵字人格分數
-```
-
-概念範例：
-
-```python
-final_score = (
-    semantic_score * 0.6 +
-    type_score * 0.3 +
-    keyword_score * 0.1
-)
-```
-
-其中：
-
-* `semantic_score`：使用者輸入與中文習性、英文習性、中文介紹、英文介紹的相似程度
-* `type_score`：寶可夢屬性與人格方向的匹配程度
-* `keyword_score`：使用者輸入中人格關鍵字的加權分數
-
----
-
-## 📁 專案資料夾結構
-
-目前專案大致結構如下：
-
-```text
-pokemon_project/
-│
-├── pokemon_descript/
-│   └── pokedex_final.csv
-│
-├── pokedex_online.py
-├── pokedex_offline.py
-├── Gradio_pokedex.py
-├── API_Server.py
-│
-├── requirements.txt
-├── .env
-├── .env.example
-├── .gitignore
-├── README.md
-│
-├── old/
-└── __pycache__/
-```
-
----
-
-## 📄 檔案說明
-
-| 檔案 / 資料夾          | 說明                            |
-| ---------------------- | ------------------------------- |
-| `pokemon_descript/`  | 存放寶可夢圖鑑資料              |
-| `pokedex_final.csv`  | 寶可夢主要資料集，包含中文與英文圖鑑/習性資料 |
-| `pokedex_online.py`  | 可連接 Gemini API 的版本        |
-| `pokedex_offline.py` | 離線推薦版本                    |
-| `Gradio_pokedex.py`  | Gradio 網頁介面                 |
-| `API_Server.py`      | API Server 版本                 |
-| `requirements.txt`   | 專案需要安裝的套件              |
-| `.env`               | API Key 設定檔，不上傳 GitHub   |
-| `.env.example`       | 環境變數範例                    |
-| `.gitignore`         | Git 忽略設定                    |
-| `old/`               | 舊版本程式資料夾，不上傳 GitHub |
-
----
-
-## ⚙️ 安裝方式
-
-請先安裝 Python，建議使用 Python 3.10 以上版本。
-
-接著在專案資料夾中執行：
+macOS／Linux：
 
 ```bash
-pip install -r requirements.txt
+cp .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
----
-
-## 🔐 環境變數設定
-
-本專案使用 `.env` 管理 API Key。
-
-請建立 `.env` 檔案，內容可參考：
+編輯 `.env`，至少更換資料庫密碼；若要啟用管理後台，再設定管理密碼與剛產生的 session secret：
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
-HF_TOKEN=your_huggingface_token_here
-GEMINI_MODEL=gemini-2.5-flash
+POSTGRES_PASSWORD=replace-with-a-strong-password
+DATABASE_URL=postgresql+psycopg://pokemon:replace-with-a-strong-password@db:5432/pokemon
+
+ADMIN_PASSWORD=replace-with-a-strong-admin-password
+ADMIN_SESSION_SECRET=replace-with-generated-random-secret
+ADMIN_COOKIE_SECURE=false
 ```
 
-注意：
+若網站由 HTTPS 提供，請將 `ADMIN_COOKIE_SECURE=true`。
 
-```text
-.env 內含 API Key，不可以上傳到 GitHub。
-```
-
-所以 `.env` 已經加入 `.gitignore`。
-
----
-
-## 🚀 執行方式
-
-### 🌐 執行 Gradio 網頁版
+### 3. 啟動完整服務
 
 ```bash
-python Gradio_pokedex.py
+docker compose up --build
 ```
 
-執行後會出現本地網址，例如：
+Compose 會依序執行：
 
 ```text
-http://127.0.0.1:7860
+PostgreSQL → Alembic migration → CSV seed → pgvector embedding → FastAPI
 ```
 
-打開後即可使用寶可夢人格推薦系統。
+第一次啟動需要建立 1,025 筆資料與 embeddings，時間會比後續啟動長。當 readiness 回傳 `ready` 後即可使用：
 
----
+| 頁面 | URL |
+| --- | --- |
+| Top 3 人格推薦 | <http://localhost:8000/> |
+| 寶可夢圖鑑 | <http://localhost:8000/pokemon> |
+| 管理後台 | <http://localhost:8000/admin> |
+| Swagger UI | <http://localhost:8000/docs> |
+| OpenAPI JSON | <http://localhost:8000/openapi.json> |
+| Liveness | <http://localhost:8000/health/live> |
+| Readiness | <http://localhost:8000/health/ready> |
 
-### 🧠 執行離線版本
+背景啟動與停止：
 
 ```bash
-python pokedex_offline.py
+docker compose up --build -d
+docker compose down
 ```
 
-此版本主要使用本地資料進行推薦。
+`docker compose down` 不會刪除 PostgreSQL 與模型 volumes；除非確定不需要資料，請勿加入 `-v`。
 
----
+## 環境變數
 
-### 🔌 執行 API Server
+| 變數 | 預設值 | 說明 |
+| --- | --- | --- |
+| `DATABASE_URL` | Docker Compose 產生 | PostgreSQL SQLAlchemy URL |
+| `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | query 與 chunk embedding model |
+| `EMBEDDING_MODEL_VERSION` | `default` | embedding lineage 版本 |
+| `LLM_PROVIDER` | `gemini` | `gemini` 或 `openai` |
+| `GEMINI_API_KEY` | 空白 | Gemini 選配金鑰 |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model 名稱 |
+| `OPENAI_API_KEY` | 空白 | OpenAI 選配金鑰 |
+| `OPENAI_MODEL` | `gpt-5-mini` | OpenAI model 名稱 |
+| `RAG_TIMEOUT_SECONDS` | `20` | 外部解釋逾時秒數 |
+| `POKEMON_ARTWORK_BASE_URL` | 空白 | CDN artwork 目錄；設定後 importer 產生四位數 PNG URL |
+| `ADMIN_PASSWORD` | 空白 | 單一管理員密碼；空白時後台登入停用 |
+| `ADMIN_SESSION_SECRET` | 空白 | 至少 32 字元的 session 簽章 secret |
+| `ADMIN_COOKIE_SECURE` | `false` | HTTPS 環境應設為 `true` |
+| `HF_TOKEN` | 空白 | Hugging Face 下載模型的選配 token |
+
+## API
+
+主要公開介面：
+
+| Method | Path | 說明 |
+| --- | --- | --- |
+| `POST` | `/api/v1/recommendations` | 取得固定三筆推薦、分數、證據與選配解釋 |
+| `GET` | `/api/v1/pokemon` | 搜尋、篩選、排序與分頁 |
+| `GET` | `/api/v1/pokemon/{id}` | 取得寶可夢詳細資料 |
+| `POST` | `/api/v1/admin/session` | 管理員登入 |
+| `GET/POST/PATCH` | `/api/v1/admin/pokemon...` | 管理資料、狀態與重建索引 |
+| `GET` | `/health/live` | 程序存活檢查 |
+| `GET` | `/health/ready` | DB、pgvector 與推薦引擎就緒檢查 |
+
+推薦請求範例：
 
 ```bash
-python API_Server.py
+curl -X POST http://localhost:8000/api/v1/recommendations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "我慢熟但重承諾，也喜歡和別人分享自己喜歡的事物。",
+    "generate_explanation": false
+  }'
 ```
 
-或使用：
+每筆推薦結果包含：
+
+```text
+rank
+pokemon: id、圖鑑編號、中英文名稱、屬性、圖片 URL
+scores: semantic、personality、total
+evidence: 文件與 chunk lineage、檢索排名、RRF 分數、匹配特質
+explanation: 繁中分析、citation、provider、fallback 狀態（選配）
+```
+
+完整 request／response schema 請直接查看 `/docs`。
+
+## 資料匯入與 Embedding
+
+Importer 可重跑且不會建立重複寶可夢：
 
 ```bash
-uvicorn API_Server:app --reload
+python scripts/import_pokemon.py --dry-run
+python scripts/import_pokemon.py
 ```
 
----
+使用 CDN 圖片目錄覆寫 artwork URL：
 
-## 📦 使用到的技術
-
-| 技術                  | 用途               |
-| --------------------- | ------------------ |
-| Python                | 主要開發語言       |
-| pandas                | 讀取與整理 CSV     |
-| numpy                 | 數值運算           |
-| jieba                 | 中文斷詞           |
-| sentence-transformers | 語意向量分析 / 中英語意比對 |
-| scikit-learn          | 相似度計算 / 機器學習處理 |
-| google-genai          | Gemini API 串接    |
-| Gradio                | 建立網頁介面       |
-| FastAPI               | 建立 API Server    |
-| Uvicorn               | 啟動 API Server    |
-| python-dotenv         | 讀取 `.env`      |
-| Git / GitHub          | 版本控制與專案管理 |
-
----
-
-## 🛡️ Git 忽略設定
-
-本專案會忽略以下檔案：
-
-```gitignore
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-venv/
-env/
-.venv/
-
-old/
-
-.env
-
-.DS_Store
-Thumbs.db
-
-.ipynb_checkpoints/
-
-.gradio/
+```bash
+python scripts/import_pokemon.py \
+  --artwork-base-url https://cdn.example.com/images/pokemon/artwork
 ```
 
-這樣可以避免把 API Key、舊版本資料夾、快取檔案上傳到 GitHub。
+只建立缺少、過期、失敗或 hash 不一致的 embeddings：
 
----
+```bash
+python scripts/rebuild_embeddings.py --batch-size 64
+```
 
-## 💡 專題特色
+Alembic migration：
 
-本專題的特色包含：
+```bash
+alembic upgrade head
+alembic downgrade -1
+```
 
-* 🧠 不是單純關鍵字搜尋，而是加入語意相似度
-* 🐾 使用寶可夢中文圖鑑介紹作為核心資料
-* 🌏 增加中文習性、英文習性、中文介紹、英文介紹作為比對資料
-* 🧪 加入機器學習資料處理，將文字轉成語意向量
-* 🧬 加入寶可夢屬性權重
-* 💬 使用 Gemini AI 產生推薦理由
-* 🌐 使用 Gradio 製作互動式網頁
-* 🔐 使用 `.env` 保護 API Key
-* 📦 使用 GitHub 管理專案版本
+## AWS 圖片交付流程
 
----
-
-## 🧪 範例輸入
-
-使用者可以輸入：
+圖片不寫入 PostgreSQL，也不提交 GitHub。資料庫只保存 CloudFront URL，S3 object key 使用可預測的四位圖鑑編號：
 
 ```text
-我喜歡安靜，平常不太愛出門，但是很重視朋友。
+images/pokemon/artwork/0001.png
+images/pokemon/artwork/0002.png
+...
+images/pokemon/artwork/1025.png
 ```
 
-或：
+安裝選配 AWS 依賴：
+
+```bash
+pip install -r requirements-aws.txt
+```
+
+建立含檔名、繁中名稱、尺寸、SHA-256、object key 與 delivery URL 的 manifest：
+
+```bash
+python scripts/build_pokemon_image_manifest.py \
+  --bucket <your-bucket> \
+  --region <your-region> \
+  --delivery-base-url https://cdn.example.com
+```
+
+上傳器預設只執行本機 dry-run，不會連線 AWS：
+
+```bash
+python scripts/pokemon_s3_image_uploader.py \
+  --bucket <your-bucket> \
+  --region <your-region> \
+  --delivery-base-url https://cdn.example.com \
+  --profile <your-aws-profile>
+```
+
+先上傳一張 canary 並驗證 CloudFront，再續傳全部圖片：
+
+```bash
+python scripts/pokemon_s3_image_uploader.py \
+  --bucket <your-bucket> \
+  --region <your-region> \
+  --delivery-base-url https://cdn.example.com \
+  --profile <your-aws-profile> \
+  --limit 1 --execute --verify-delivery
+
+python scripts/pokemon_s3_image_uploader.py \
+  --bucket <your-bucket> \
+  --region <your-region> \
+  --delivery-base-url https://cdn.example.com \
+  --profile <your-aws-profile> \
+  --resume --execute --verify-delivery
+```
+
+既有 S3 物件只有在大小、Content-Type 與 SHA-256 metadata 全部一致時才略過；內容衝突時停止，不會自動覆寫。
+
+## 測試
+
+安裝完整依賴後執行：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+目前測試涵蓋：
+
+- FastAPI contract、422 驗證、Swagger 與健康檢查
+- PostgreSQL schema、migration、import transaction 與 idempotency
+- knowledge documents／chunks 的版本、hash 與 lineage
+- pgvector embedding 狀態與 exact search
+- jieba／FTS、RRF 與候選聚合
+- 人格 SQL 字典、同義詞與分數
+- Top 3 穩定排序、證據與 response schema
+- 查詢隱私與例外路徑
+- Grounded RAG、provider 切換、prompt injection 與 fallback
+- 管理後台、cookie、CSRF、停用與恢復
+- stale／ready／failed／retry embedding lifecycle
+- AWS manifest、dry-run、resume、衝突與內容驗證
+- 響應式推薦頁與圖鑑頁
+
+PostgreSQL importer 整合測試必須指向可丟棄的測試資料庫：
+
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost/test_db \
+  python -m unittest discover -s tests -p test_csv_importer.py -v
+```
+
+## 專案結構
 
 ```text
-我個性比較衝動，喜歡冒險，也喜歡挑戰新事物。
+.
+├── app/
+│   ├── api/                 # 公開與管理 API
+│   ├── db/                  # SQLAlchemy models 與 session
+│   ├── repositories/        # PostgreSQL／pgvector 資料存取
+│   ├── schemas/             # Pydantic request／response contracts
+│   ├── services/            # retrieval、scoring、RAG、import、reindex
+│   ├── static/              # 原生 JavaScript 與 CSS
+│   ├── templates/           # Jinja2 頁面
+│   └── main.py              # FastAPI application factory
+├── alembic/                 # schema migrations
+├── pokemon_descript/        # 1,025 筆來源資料集
+├── scripts/                 # import、embedding 與 S3 圖片工具
+├── tests/                   # 125 項單元／整合測試
+├── legacy/                  # 舊版 Gradio 介面
+├── Dockerfile
+├── docker-compose.yml
+├── alembic.ini
+├── requirements.txt
+└── requirements-aws.txt
 ```
 
-或：
+## MVP 邊界與後續方向
 
-```text
-我喜歡照顧別人，個性溫柔，但是有時候會想很多。
-```
+目前版本刻意採用 exact pgvector search、單一管理員與同步 reindex，讓資料一致性、證據可追蹤性及完整測試優先於基礎設施複雜度。
 
----
+後續可擴充：
 
-## 🎁 系統輸出範例
+- 公開環境部署、HTTPS 與自動化 CI/CD
+- pgvector HNSW 索引與大型資料集效能量測
+- 背景工作佇列與 reindex 進度通知
+- 可觀測性、retrieval evaluation 與離線推薦品質指標
+- 更完整的人格詞庫管理介面
 
-系統會輸出類似：
+## 免責聲明
 
-```text
-推薦寶可夢：妙蛙種子
-分類：種子寶可夢
-屬性：草、毒
-人格契合度：78.5%
-
-推薦原因：
-這隻寶可夢給人的感覺溫和、穩定，和你輸入中重視陪伴、喜歡照顧別人的特質相近，因此系統推薦牠作為你的代表寶可夢。
-```
-
----
-
-## 🔮 未來改進方向
-
-之後預計可以繼續增加：
-
-* ✨ 更多人格特質
-* 🔍 更多個性關鍵字
-* 📊 寶可夢能力值分析
-* 🧠 向量資料庫搜尋
-* 📈 持續增加可供機器學習使用的寶可夢資料
-* 🌏 強化中文與英文習性的交叉比對
-* 🏆 顯示前 3 名推薦寶可夢
-* 📈 顯示推薦分數細節
-* 🌐 部署成公開網站
-* 👤 增加使用者登入功能
-* 🎨 優化 Gradio 介面
-* 📄 製作完整 API 文件
-
----
-
-## 🧑‍💻 學習成果
-
-透過這個專題，目前練習到：
-
-* Python 基礎程式設計
-* CSV 資料處理
-* 中文文字處理
-* 語意相似度計算
-* 機器學習資料處理
-* 中英文字資料整合
-* AI API 串接
-* Gradio 介面設計
-* FastAPI 基礎概念
-* `.env` API Key 保護
-* `.gitignore` 忽略檔案設定
-* GitHub 專案上傳流程
-
----
-
-## 📝 專題總結
-
-這個寶可夢人格推薦系統的核心想法是：
-
-> 讓 AI 不只是看到關鍵字，而是能夠根據使用者輸入的個性描述、中文/英文圖鑑介紹、中文/英文習性、屬性與人格權重，推薦出一隻較符合使用者特質的寶可夢。
-
-未來這個系統可以繼續擴充成更完整的互動式寶可夢人格分析網站。
+本專案為非商業、教育與作品集用途。Pokémon、寶可夢名稱及相關圖像之商標與著作權均屬其各自權利人所有，本專案與 Nintendo、Creatures Inc.、GAME FREAK Inc. 或 The Pokémon Company 無官方關聯。
