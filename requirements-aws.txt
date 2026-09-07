@@ -1,0 +1,2 @@
+# Optional local tooling for scripts/pokemon_s3_image_uploader.py
+boto3==1.43.51

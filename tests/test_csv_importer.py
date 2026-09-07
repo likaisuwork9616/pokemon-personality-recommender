@@ -28,6 +28,7 @@ from app.services.csv_importer import (
     DEFAULT_CSV_PATH,
     CsvImportError,
     CsvPokemonImporter,
+    normalize_artwork_base_url,
     parse_csv_row,
     read_csv_records,
 )
@@ -67,6 +68,29 @@ class CsvParserTests(unittest.TestCase):
             [(item.image_kind, item.is_primary) for item in record.images],
             [("artwork", True), ("sprite", False)],
         )
+
+    def test_artwork_base_url_override_is_deterministic_and_keeps_sprite(self):
+        record = parse_csv_row(
+            self.rows[0],
+            row_number=2,
+            artwork_base_url="https://cdn.example.test/images/pokemon/artwork/",
+        )
+
+        self.assertEqual(
+            record.images[0].image_url,
+            "https://cdn.example.test/images/pokemon/artwork/0001.png",
+        )
+        self.assertEqual(record.images[1].image_url, self.rows[0]["sprite_url"])
+
+    def test_artwork_base_url_rejects_query_fragment_and_non_http_scheme(self):
+        for value in (
+            "s3://bucket/images",
+            "https://cdn.example.test/images?version=1",
+            "https://cdn.example.test/images#fragment",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(CsvImportError, "artwork base URL"):
+                    normalize_artwork_base_url(value)
 
     def test_unknown_sentinels_and_type_null_are_normalized(self):
         type_null = next(row for row in self.rows if row["pokedex_number"] == "772")

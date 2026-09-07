@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
@@ -285,8 +286,30 @@ def _content_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def normalize_artwork_base_url(value: str | None) -> str | None:
+    """Validate and normalize an optional public artwork directory URL."""
+
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise CsvImportError(
+            "artwork base URL must be an absolute HTTP(S) URL without query or fragment"
+        )
+    return normalized
+
+
 def parse_csv_row(
-    row: Mapping[str, str], *, row_number: int = 2
+    row: Mapping[str, str],
+    *,
+    row_number: int = 2,
+    artwork_base_url: str | None = None,
 ) -> ParsedPokemonRow:
     """Convert one CSV dictionary into a fully typed aggregate payload."""
 
@@ -299,6 +322,9 @@ def parse_csv_row(
         )
     if any(value is None for value in row.values()):
         raise CsvImportError(f"CSV row {row_number} has fewer values than columns")
+
+    pokedex_number = _integer(row, "pokedex_number", row_number, minimum=1)
+    normalized_artwork_base_url = normalize_artwork_base_url(artwork_base_url)
 
     generation_raw = _required_text(row, "generation", row_number).casefold()
     try:
@@ -384,7 +410,11 @@ def parse_csv_row(
     images = (
         ImagePayload(
             image_kind="artwork",
-            image_url=_required_text(row, "image_url", row_number),
+            image_url=(
+                f"{normalized_artwork_base_url}/{pokedex_number:04d}.png"
+                if normalized_artwork_base_url
+                else _required_text(row, "image_url", row_number)
+            ),
             is_primary=True,
         ),
         ImagePayload(
@@ -397,7 +427,7 @@ def parse_csv_row(
     return ParsedPokemonRow(
         source_row=row_number,
         pokemon=PokemonPayload(
-            pokedex_number=_integer(row, "pokedex_number", row_number, minimum=1),
+            pokedex_number=pokedex_number,
             form_key="default",
             name_zh=_required_text(row, "name_zh", row_number),
             name_en=_required_text(row, "name_en", row_number),
@@ -431,7 +461,11 @@ def parse_csv_row(
     )
 
 
-def read_csv_records(path: str | Path = DEFAULT_CSV_PATH) -> list[ParsedPokemonRow]:
+def read_csv_records(
+    path: str | Path = DEFAULT_CSV_PATH,
+    *,
+    artwork_base_url: str | None = None,
+) -> list[ParsedPokemonRow]:
     """Read and validate the complete CSV before opening a DB transaction."""
 
     csv_path = Path(path)
@@ -446,8 +480,13 @@ def read_csv_records(path: str | Path = DEFAULT_CSV_PATH) -> list[ParsedPokemonR
             raise CsvImportError(
                 f"CSV header is invalid; missing={missing}, unexpected={unexpected}"
             )
+        normalized_artwork_base_url = normalize_artwork_base_url(artwork_base_url)
         records = [
-            parse_csv_row(row, row_number=line_number)
+            parse_csv_row(
+                row,
+                row_number=line_number,
+                artwork_base_url=normalized_artwork_base_url,
+            )
             for line_number, row in enumerate(reader, start=2)
         ]
 
@@ -478,8 +517,12 @@ class CsvPokemonImporter:
         path: str | Path = DEFAULT_CSV_PATH,
         *,
         dry_run: bool = False,
+        artwork_base_url: str | None = None,
     ) -> ImportSummary:
-        return self.import_records(read_csv_records(path), dry_run=dry_run)
+        return self.import_records(
+            read_csv_records(path, artwork_base_url=artwork_base_url),
+            dry_run=dry_run,
+        )
 
     def import_records(
         self,
