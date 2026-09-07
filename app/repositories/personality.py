@@ -21,6 +21,25 @@ class PersonalityCatalog:
     synonyms_by_trait: dict[str, tuple[str, ...]]
 
 
+@dataclass(frozen=True)
+class PersonalityWeightedTerm:
+    term: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class PublicPersonalityTrait:
+    code: str
+    name_zh: str
+    weighted_terms: tuple[PersonalityWeightedTerm, ...]
+
+
+@dataclass(frozen=True)
+class PublicPersonalityCatalog:
+    revision: int
+    traits: tuple[PublicPersonalityTrait, ...]
+
+
 class PersonalityRepository:
     """Keep the vocabulary in PostgreSQL and perform request matching in SQL."""
 
@@ -83,6 +102,100 @@ class PersonalityRepository:
         if value is None:
             raise RuntimeError("personality vocabulary revision is missing")
         return int(value)
+
+    def public_catalog(self) -> PublicPersonalityCatalog:
+        """Return the active, weighted vocabulary intended for public display."""
+
+        revision = (
+            select(PersonalityVocabularyState.revision)
+            .where(PersonalityVocabularyState.id == 1)
+            .scalar_subquery()
+        )
+        rows = self.session.execute(
+            select(
+                revision.label("revision"),
+                PersonalityTrait.code,
+                PersonalityTrait.name_zh,
+                PersonalityTrait.vector_index,
+                PersonalityTraitSynonym.term,
+                PersonalityTraitSynonym.language_code,
+                PersonalityTraitSynonym.weight,
+            )
+            .join(
+                PersonalityTraitSynonym,
+                PersonalityTraitSynonym.trait_code == PersonalityTrait.code,
+            )
+            .where(
+                PersonalityTrait.is_active.is_(True),
+                PersonalityTraitSynonym.is_active.is_(True),
+            )
+            .order_by(PersonalityTrait.vector_index)
+        ).all()
+
+        if rows and rows[0].revision is None:
+            raise RuntimeError("personality vocabulary revision is missing")
+
+        grouped: dict[int, dict[str, object]] = {}
+        revisions: set[int] = set()
+        for row in rows:
+            if row.revision is None:
+                raise RuntimeError("personality vocabulary revision is missing")
+            revisions.add(int(row.revision))
+            vector_index = int(row.vector_index)
+            entry = grouped.setdefault(
+                vector_index,
+                {
+                    "code": str(row.code),
+                    "name_zh": str(row.name_zh),
+                    "terms": [],
+                },
+            )
+            if entry["code"] != str(row.code) or entry["name_zh"] != str(row.name_zh):
+                raise RuntimeError("personality vector index maps to multiple traits")
+            terms = entry["terms"]
+            assert isinstance(terms, list)
+            terms.append(
+                (
+                    str(row.language_code),
+                    str(row.term),
+                    float(row.weight),
+                )
+            )
+
+        expected_indexes = list(range(PERSONALITY_DIMENSIONS))
+        if sorted(grouped) != expected_indexes:
+            raise RuntimeError("active personality traits must define vector indexes 0-15")
+        if len(revisions) != 1:
+            raise RuntimeError("personality vocabulary revision is inconsistent")
+
+        traits: list[PublicPersonalityTrait] = []
+        for vector_index in expected_indexes:
+            entry = grouped[vector_index]
+            terms = entry["terms"]
+            assert isinstance(terms, list)
+            ordered_terms = sorted(
+                terms,
+                key=lambda item: (
+                    0 if item[0].casefold().startswith("zh") else 1,
+                    -item[2],
+                    item[1],
+                ),
+            )
+            traits.append(
+                PublicPersonalityTrait(
+                    code=str(entry["code"]),
+                    name_zh=str(entry["name_zh"]),
+                    weighted_terms=tuple(
+                        PersonalityWeightedTerm(term=term, weight=weight)
+                        for _language_code, term, weight in ordered_terms
+                    ),
+                )
+            )
+
+        return PublicPersonalityCatalog(
+            revision=next(iter(revisions)),
+            traits=tuple(traits),
+        )
 
     def vector_for_text(self, text: str) -> tuple[float, ...]:
         """Return a normalized 16-dimensional vector from parameterized SQL."""

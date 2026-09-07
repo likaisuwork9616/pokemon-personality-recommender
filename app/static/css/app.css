@@ -777,27 +777,6 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-.example-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-top: 1rem;
-}
-
-.example-prompts button {
-  padding: 0.42rem 0.65rem;
-  color: var(--muted);
-  background: #ffffff;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.78rem;
-}
-
-.example-prompts button:hover {
-  color: var(--text);
-  border-color: var(--focus);
-}
-
 .privacy-note {
   margin: 0.85rem 0;
   color: var(--muted);
@@ -812,6 +791,144 @@ button:disabled {
 .recommendation-submit {
   width: 100%;
   justify-content: space-between;
+}
+
+.public-trait-panel {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  margin: 0 0 3rem;
+  background: linear-gradient(145deg, #ffffff, var(--screen));
+  border: 0.42rem solid var(--pokedex-red);
+  box-shadow: var(--shadow), inset 0 0 0 2px var(--pokedex-red-dark);
+}
+
+.public-trait-heading,
+.public-trait-card-heading {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.public-trait-heading h2,
+.public-trait-card-heading h3 {
+  margin: 0;
+}
+
+.public-trait-source,
+.public-trait-card-heading span {
+  flex: 0 0 auto;
+  padding: 0.25rem 0.55rem;
+  color: #ffffff;
+  background: var(--pokedex-red);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.public-trait-intro,
+.public-trait-status {
+  color: var(--muted);
+}
+
+.public-trait-intro {
+  max-width: 56rem;
+  margin: 0.75rem 0 0;
+}
+
+.public-trait-status {
+  margin: 1rem 0 0;
+  font-size: 0.82rem;
+}
+
+.public-trait-status.is-error {
+  color: var(--danger);
+}
+
+.public-trait-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.public-trait-grid[hidden] {
+  display: none;
+}
+
+.public-trait-card {
+  min-width: 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.public-trait-card-heading {
+  align-items: center;
+}
+
+.public-trait-card-heading h3 {
+  min-width: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.public-trait-card-heading span {
+  color: var(--signal-ink);
+  background: #fff0ac;
+}
+
+.public-trait-preview,
+.public-trait-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.public-trait-preview {
+  margin-top: 0.8rem;
+}
+
+.public-weighted-term {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  color: var(--text);
+  background: var(--screen-deep);
+  border: 1px solid #b8cfbd;
+  border-radius: 999px;
+  font-size: 0.74rem;
+}
+
+.public-weighted-term > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-weighted-term strong {
+  flex: 0 0 auto;
+  color: var(--accent-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+.public-trait-details {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.public-trait-details summary {
+  padding-top: 0.65rem;
+  color: var(--focus);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.public-trait-terms {
+  padding-top: 0.7rem;
 }
 
 .recommendation-state {
@@ -1673,6 +1790,10 @@ button:disabled {
     max-width: 44rem;
   }
 
+  .public-trait-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .recommendation-grid {
     grid-template-columns: 1fr;
   }
@@ -1765,6 +1886,10 @@ button:disabled {
     margin-top: 1rem;
     border-bottom-width: 0.45rem;
     border-radius: 1.5rem 1.5rem 0.9rem 0.9rem;
+  }
+
+  .public-trait-grid {
+    grid-template-columns: 1fr;
   }
 
   .hero-copy h1 {

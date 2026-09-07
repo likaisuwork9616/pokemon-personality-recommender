@@ -13,6 +13,9 @@
   const results = document.querySelector("#recommendation-results");
   const grid = document.querySelector("#recommendation-grid");
   const algorithm = document.querySelector("#recommendation-algorithm");
+  const publicTraitGrid = document.querySelector("#public-trait-grid");
+  const publicTraitStatus = document.querySelector("#public-trait-status");
+  const publicTraitRevision = document.querySelector("#public-trait-revision");
   let activeController = null;
 
   const element = (tagName, className, content) => {
@@ -174,6 +177,73 @@
     counter.textContent = `${input.value.length} / 2000`;
   };
 
+  const displayWeight = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+    return number.toLocaleString("zh-TW", { maximumFractionDigits: 2 });
+  };
+
+  const weightedTerm = (item) => {
+    const chip = element("span", "public-weighted-term");
+    chip.append(
+      element("span", "", item.term),
+      element("strong", "", `×${displayWeight(item.weight)}`),
+    );
+    return chip;
+  };
+
+  const publicTraitCard = (trait) => {
+    const terms = Array.isArray(trait.weighted_terms)
+      ? trait.weighted_terms.filter(
+          (item) => item && typeof item.term === "string" && Number.isFinite(Number(item.weight)),
+        )
+      : [];
+    const card = element("article", "public-trait-card");
+    const heading = element("div", "public-trait-card-heading");
+    heading.append(
+      element("h3", "", trait.name_zh || "未命名特質"),
+      element("span", "", `${terms.length} 個加權詞`),
+    );
+
+    const preview = element("div", "public-trait-preview");
+    preview.append(...terms.slice(0, 3).map(weightedTerm));
+    card.append(heading, preview);
+
+    if (terms.length > 3) {
+      const details = document.createElement("details");
+      details.className = "public-trait-details";
+      details.append(element("summary", "", "查看全部詞彙權重"));
+      const allTerms = element("div", "public-trait-terms");
+      allTerms.append(...terms.map(weightedTerm));
+      details.append(allTerms);
+      card.append(details);
+    }
+    return card;
+  };
+
+  const loadPublicTraits = async () => {
+    if (!publicTraitGrid || !publicTraitStatus || !publicTraitRevision) return;
+    try {
+      const response = await fetch("/api/v1/personality/traits", {
+        headers: { Accept: "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload.traits) || payload.traits.length === 0) {
+        throw new Error("invalid personality vocabulary response");
+      }
+      publicTraitGrid.replaceChildren(...payload.traits.map(publicTraitCard));
+      publicTraitGrid.hidden = false;
+      publicTraitStatus.textContent = `目前啟用 ${payload.traits.length} 種人格特質；點開卡片可查看全部詞彙權重。`;
+      publicTraitRevision.textContent = `SQL 詞庫 v${payload.revision || "—"}`;
+    } catch (_error) {
+      publicTraitGrid.replaceChildren();
+      publicTraitGrid.hidden = true;
+      publicTraitStatus.textContent = "目前無法載入人格詞庫；推薦功能仍可正常使用。";
+      publicTraitStatus.classList.add("is-error");
+      publicTraitRevision.textContent = "暫時無法讀取";
+    }
+  };
+
   const requestRecommendation = async () => {
     const text = input.value.trim();
     if (text.length < 2) {
@@ -225,16 +295,10 @@
     input.setCustomValidity("");
     updateCounter();
   });
-  document.querySelectorAll("[data-example]").forEach((button) => {
-    button.addEventListener("click", () => {
-      input.value = button.dataset.example || "";
-      updateCounter();
-      input.focus();
-    });
-  });
   document.querySelector("#recommendation-retry")?.addEventListener(
     "click",
     requestRecommendation,
   );
   updateCounter();
+  loadPublicTraits();
 })();

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
 from app.api.catalog import router as catalog_router
+from app.api.personality import router as personality_router
 from app.api.v1 import create_recommendation, router as v1_router
 from app.schemas import RecommendationResponse
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
@@ -132,6 +133,7 @@ def create_app(
     application.include_router(v1_router)
     application.include_router(admin_router)
     application.include_router(catalog_router)
+    application.include_router(personality_router)
     application.include_router(web_router)
     application.mount("/static", StaticFiles(directory="app/static"), name="static")
 
