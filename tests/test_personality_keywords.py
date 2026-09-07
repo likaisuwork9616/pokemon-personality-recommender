@@ -77,13 +77,31 @@ class PersonalityRepositoryTests(unittest.TestCase):
         self.assertGreater(vector[12], 0)
         statement, params = session.calls[0]
         sql = str(statement.compile(dialect=postgresql.dialect()))
-        self.assertIn("strpos(lower(", sql)
+        self.assertIn("strpos(", sql)
+        self.assertNotIn("strpos(lower(", sql)
         self.assertIn("personality_trait_synonyms", sql)
+        self.assertIn("normalized_term", sql)
         self.assertNotIn("我慢熟", sql)
         self.assertEqual(
             params["personality_query"],
-            "我慢熟但重承諾，也喜歡與人分享",
+            "我慢熟但重承諾,也喜歡與人分享",
         )
+
+    def test_query_uses_nfkc_casefold_without_persisting_raw_text(self):
+        session = _Session(
+            [[SimpleNamespace(vector_index=4, score=2.0)]]
+        )
+        raw_query = "  ＲＥＬＩＡＢＬＥ\n"
+
+        vector = PersonalityRepository(session).vector_for_text(raw_query)
+
+        self.assertEqual(vector[4], 1.0)
+        statement, params = session.calls[0]
+        sql = str(statement.compile(dialect=postgresql.dialect()))
+        self.assertTrue(statement.is_select)
+        self.assertEqual(params, {"personality_query": "reliable"})
+        self.assertNotIn(raw_query, sql)
+        self.assertIn("normalized_term", sql)
 
     def test_no_sql_matches_returns_zero_vector(self):
         vector = PersonalityRepository(_Session([[]])).vector_for_text("未知敘述")

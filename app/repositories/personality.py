@@ -9,6 +9,7 @@ from sqlalchemy import Text, bindparam, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import PersonalityTrait, PersonalityTraitSynonym, PersonalityVocabularyState
+from app.personality_vocabulary import canonicalize_personality_text
 
 
 PERSONALITY_DIMENSIONS = 16
@@ -86,7 +87,7 @@ class PersonalityRepository:
     def vector_for_text(self, text: str) -> tuple[float, ...]:
         """Return a normalized 16-dimensional vector from parameterized SQL."""
 
-        query_text = str(text).strip()
+        query_text = canonicalize_personality_text(text)
         if not query_text:
             raise ValueError("personality query must not be blank")
         query_parameter = bindparam("personality_query", type_=Text())
@@ -103,8 +104,8 @@ class PersonalityRepository:
                 PersonalityTrait.is_active.is_(True),
                 PersonalityTraitSynonym.is_active.is_(True),
                 func.strpos(
-                    func.lower(query_parameter),
-                    func.lower(PersonalityTraitSynonym.term),
+                    query_parameter,
+                    PersonalityTraitSynonym.normalized_term,
                 )
                 > 0,
             )

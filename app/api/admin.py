@@ -368,6 +368,25 @@ def _set_personality_refresh_response(response: Response, refreshed: bool) -> No
         response.status_code = status.HTTP_202_ACCEPTED
 
 
+def _set_personality_noop_response(request: Request, response: Response) -> None:
+    """Expose current health without refreshing an unchanged vocabulary."""
+
+    engine = getattr(request.app.state, "recommendation_engine", None)
+    healthy = engine is not None and bool(
+        getattr(engine, "personality_refresh_healthy", True)
+    )
+    response.headers["X-Personality-Refresh-Status"] = (
+        "ready" if healthy else "pending"
+    )
+
+
+def _invalid_personality_vocabulary(exc: ValueError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"code": "invalid_personality_vocabulary", "message": str(exc)},
+    )
+
+
 @router.post("/session", response_model=AdminSessionResponse, summary="管理員登入")
 def login(payload: AdminLoginRequest, request: Request) -> JSONResponse:
     auth: AdminAuth = request.app.state.admin_auth
@@ -449,7 +468,13 @@ def update_personality_trait(
     trait = repository.get_trait(trait_code)
     if trait is None:
         raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    repository.rename_trait(trait, payload.name_zh)
+    try:
+        changed = repository.rename_trait(trait, payload.name_zh)
+    except ValueError as exc:
+        raise _invalid_personality_vocabulary(exc) from None
+    if not changed:
+        _set_personality_noop_response(request, response)
+        return _personality_trait(trait)
     _set_personality_refresh_response(
         response,
         _commit_personality(repository, request),
@@ -475,7 +500,10 @@ def create_personality_synonym(
     trait = repository.get_trait(trait_code)
     if trait is None:
         raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    item = repository.add_synonym(trait, **payload.model_dump())
+    try:
+        item = repository.add_synonym(trait, **payload.model_dump())
+    except ValueError as exc:
+        raise _invalid_personality_vocabulary(exc) from None
     _set_personality_refresh_response(
         response,
         _commit_personality(repository, request),
@@ -503,10 +531,13 @@ def update_personality_synonym(
     try:
         changes = payload.model_dump(exclude_unset=True)
         changes.pop("original_term", None)
-        repository.update_synonym(item, **changes)
+        changed = repository.update_synonym(item, **changes)
     except ValueError as exc:
         repository.session.rollback()
-        raise HTTPException(status_code=422, detail={"code": "invalid_personality_vocabulary", "message": str(exc)}) from None
+        raise _invalid_personality_vocabulary(exc) from None
+    if not changed:
+        _set_personality_noop_response(request, response)
+        return _personality_synonym(item)
     _set_personality_refresh_response(
         response,
         _commit_personality(repository, request),
