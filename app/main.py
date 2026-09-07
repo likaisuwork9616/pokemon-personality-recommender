@@ -1,10 +1,14 @@
 from contextlib import asynccontextmanager
+import json
+import logging
 import os
+from time import perf_counter
 from typing import Any, Callable
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
@@ -15,6 +19,7 @@ from app.services.admin_auth import AdminAuth, AdminAuthConfig
 from app.services.embedding import DEFAULT_MODEL_NAME
 from app.services.rag import GroundedExplanationService
 from app.services.recommendation import HybridRecommendationEngine
+from app.services.observability import RequestMetrics
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -92,6 +97,30 @@ def create_app(
         application.state.recommendation_engine = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格與語意證據推薦 Top 3 寶可夢。", version="2.1.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
+    application.state.request_metrics = RequestMetrics()
+
+    @application.middleware("http")
+    async def observe_requests(request: Request, call_next):
+        request_id = uuid4().hex
+        started = perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            duration = perf_counter() - started
+            route = getattr(request.scope.get("route"), "path", "__unmatched__")
+            application.state.request_metrics.observe(request.method, route, status_code, duration)
+            logging.getLogger("pokemon.http").info(json.dumps({
+                "event": "http_request",
+                "request_id": request_id,
+                "method": request.method,
+                "route": route,
+                "status": status_code,
+                "duration_ms": round(duration * 1000, 3),
+            }, separators=(",", ":")))
     application.include_router(v1_router)
     application.include_router(admin_router)
     application.include_router(catalog_router)
@@ -130,6 +159,12 @@ def create_app(
     async def ready() -> JSONResponse:
         is_ready = getattr(application.state, "recommendation_engine", None) is not None
         return JSONResponse(status_code=200 if is_ready else 503, content={"status": "ready" if is_ready else "not_ready"})
+    @application.get("/metrics", tags=["observability"], include_in_schema=False)
+    async def metrics() -> PlainTextResponse:
+        return PlainTextResponse(
+            application.state.request_metrics.render_prometheus(),
+            media_type="text/plain; version=0.0.4",
+        )
     application.add_api_route("/recommend", create_recommendation, methods=["POST"], response_model=RecommendationResponse, deprecated=True)
     return application
 

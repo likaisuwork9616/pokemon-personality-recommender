@@ -461,6 +461,9 @@ python -m unittest discover -s tests -v
 - Grounded RAG、provider 切換、prompt injection 與 fallback
 - 管理後台、cookie、CSRF、停用與恢復
 - stale／ready／failed／retry embedding lifecycle
+- PostgreSQL 背景 reindex queue、`SKIP LOCKED` worker 與前端進度通知
+- 不含 request body 的結構化 request log、request ID 與 Prometheus metrics
+- 版本化離線評估集、Recall@K、MRR、nDCG、Hit Rate 與 Precision
 - AWS manifest、dry-run、resume、衝突與內容驗證
 - 響應式推薦頁與圖鑑頁
 
@@ -486,8 +489,9 @@ TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost/test_db \
 │   └── main.py              # FastAPI application factory
 ├── alembic/                 # schema migrations
 ├── pokemon_descript/        # 1,025 筆來源資料集
-├── scripts/                 # import、embedding 與 S3 圖片工具
-├── tests/                   # 125 項單元／整合測試
+├── evaluation/              # 版本化離線推薦標註集
+├── scripts/                 # import、embedding、evaluation 與 S3 圖片工具
+├── tests/                   # 單元／整合測試
 ├── legacy/                  # 舊版 Gradio 介面
 ├── Dockerfile
 ├── docker-compose.yml
@@ -500,11 +504,24 @@ TEST_DATABASE_URL=postgresql+psycopg://user:password@localhost/test_db \
 
 目前版本已提供 pgvector HNSW 與 exact 基準模式；HNSW 使用 cosine operator class、filtered iterative scan 與可調整的 `ef_search`，並以 recall／延遲 benchmark 驗證品質與效能取捨。
 
+### 可觀測性與離線品質評估
+
+每個 HTTP response 都包含 `X-Request-ID`。`/metrics` 以 Prometheus text format 輸出低基數的 route-template 請求量與耗時；結構化 log 只記錄 request ID、method、route、status 與 duration，不讀取或記錄使用者 request body。
+
+執行版本化的離線標註集：
+
+```bash
+python scripts/evaluate_recommendations.py --retrieval-k 10
+python scripts/evaluate_recommendations.py --min-recall 0.50 --min-hit-rate 0.60 --output evaluation-report.json
+```
+
+報告包含 retrieval Recall@K／MRR／nDCG、Top‑3 Hit Rate／Precision／MRR 與延遲統計。輸出只包含 case ID 與指標，不回寫資料庫，也不輸出 query 文字；門檻未達時 CLI 以非零狀態結束，可直接接入 CI。
+
+目前 5 筆初始人工標註集的 baseline（2026-09-07、4,684 個 ready vectors）為 Recall@10 `0.20`、MRR@10 `0.15`、nDCG@10 `0.1391`、Top‑3 Hit Rate `0.20`，平均單次延遲約 `287.63 ms`。這組低基準值被保留為後續調整詞庫、標註與 ranking 的可量化起點，不宣稱已達正式推薦品質門檻。
+
 後續可擴充：
 
 - 公開環境部署、HTTPS 與自動化 CI/CD
-- 背景工作佇列與 reindex 進度通知
-- 可觀測性、retrieval evaluation 與離線推薦品質指標
 - 更完整的人格詞庫管理介面
 
 ## 免責聲明
