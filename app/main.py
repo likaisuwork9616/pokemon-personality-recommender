@@ -13,8 +13,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
 from app.api.catalog import router as catalog_router
-from app.api.v1 import create_recommendation, router as v1_router
-from app.schemas import RecommendationResponse
+from app.api.personality import router as personality_router
+from app.api.v1 import router as v1_router
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
 from app.services.embedding import DEFAULT_MODEL_NAME
 from app.services.rag import GroundedExplanationService
@@ -102,7 +102,7 @@ def create_app(
             application.state.readiness_error = f"{type(exc).__name__}: {exc}"[:500]
         yield
         application.state.recommendation_engine = None
-    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格與語意證據推薦 Top 3 寶可夢。", version="2.1.0", lifespan=lifespan)
+    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.1.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
 
@@ -132,6 +132,7 @@ def create_app(
     application.include_router(v1_router)
     application.include_router(admin_router)
     application.include_router(catalog_router)
+    application.include_router(personality_router)
     application.include_router(web_router)
     application.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -186,7 +187,6 @@ def create_app(
             ),
             media_type="text/plain; version=0.0.4",
         )
-    application.add_api_route("/recommend", create_recommendation, methods=["POST"], response_model=RecommendationResponse, deprecated=True)
     return application
 
 app = create_app()

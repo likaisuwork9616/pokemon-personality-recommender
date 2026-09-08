@@ -263,22 +263,49 @@
       if (node) node.textContent = text(value, fallback);
     };
 
+    const fallbackProfileValue = (value) => (
+      value === null || value === undefined || value === "" ? "—" : "未收錄"
+    );
+
+    const localizedNames = (terms, fallback) => {
+      const names = (Array.isArray(terms) ? terms : [])
+        .map((item) => item?.name_zh)
+        .filter(Boolean);
+      return names.length ? names.join("、") : fallbackProfileValue(fallback);
+    };
+
+    const localizedName = (term, fallback) => (
+      term?.name_zh || fallbackProfileValue(fallback)
+    );
+
     const renderDescriptions = (descriptions) => {
       const container = document.querySelector("#detail-descriptions");
       container.replaceChildren();
-      const labels = {
-        description: "中文圖鑑",
-        flavor_text: "英文圖鑑",
-        analysis: "人格分析",
-        admin_note: "補充資料",
-      };
-      const available = (Array.isArray(descriptions) ? descriptions : []).filter((item) => item?.content);
+      const available = (Array.isArray(descriptions) ? descriptions : []).filter(
+        (item) => item?.content
+          && item.description_kind === "description"
+          && String(item.language_code || "").toLowerCase() === "zh-hant",
+      );
       available.forEach((item) => {
         const card = element("article", "description-card");
-        card.append(element("span", "description-meta", labels[item.description_kind] || item.description_kind || item.language_code));
-        const paragraph = element("p", "", item.content);
-        if (item.language_code) paragraph.lang = item.language_code;
-        card.append(paragraph);
+        card.append(
+          element("span", "description-meta", "中文圖鑑"),
+        );
+        const paragraphTexts = (Array.isArray(item.paragraphs)
+          ? item.paragraphs
+          : []
+        ).filter((paragraph) => typeof paragraph === "string" && paragraph.trim());
+        (paragraphTexts.length ? paragraphTexts : [item.content]).forEach(
+          (paragraphText) => {
+            const paragraph = element(
+              "p",
+              "description-paragraph",
+              paragraphText,
+            );
+            if (item.language_code) paragraph.lang = item.language_code;
+            card.append(paragraph);
+          },
+        );
         container.append(card);
       });
       if (!available.length) container.append(element("p", "english-name", "目前沒有可顯示的圖鑑敘述。"));
@@ -287,15 +314,33 @@
     const renderProfile = (pokemon) => {
       const container = document.querySelector("#detail-profile");
       container.replaceChildren();
+      const abilityDetails = Array.isArray(pokemon.ability_details)
+        ? pokemon.ability_details
+        : [];
       const rows = [
         ["世代", `第 ${text(pokemon.generation, "?")} 世代`],
         ["身高", pokemon.height_m == null ? "—" : `${pokemon.height_m} m`],
         ["體重", pokemon.weight_kg == null ? "—" : `${pokemon.weight_kg} kg`],
-        ["特性", pokemon.abilities],
-        ["隱藏特性", pokemon.hidden_ability],
-        ["棲息地", pokemon.habitat],
-        ["蛋群", pokemon.egg_groups],
-        ["成長速度", pokemon.growth_rate],
+        [
+          "特性",
+          localizedNames(
+            abilityDetails.filter((item) => !item.is_hidden),
+            pokemon.abilities,
+          ),
+        ],
+        [
+          "隱藏特性",
+          localizedNames(
+            abilityDetails.filter((item) => item.is_hidden),
+            pokemon.hidden_ability,
+          ),
+        ],
+        ["棲息地", localizedName(pokemon.habitat_detail, pokemon.habitat)],
+        ["蛋群", localizedNames(pokemon.egg_group_details, pokemon.egg_groups)],
+        [
+          "成長速度",
+          localizedName(pokemon.growth_rate_detail, pokemon.growth_rate),
+        ],
         ["捕獲率", pokemon.capture_rate],
       ];
       rows.forEach(([label, value]) => {

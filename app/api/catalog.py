@@ -7,14 +7,23 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from app.api.deps import get_pokemon_repository
 from app.repositories import PokemonRepository
 from app.schemas.catalog import (
+    CatalogAbilityTerm,
     CatalogDescription,
     CatalogImage,
+    CatalogLocalizedTerm,
     CatalogPage,
     CatalogPokemon,
     CatalogStats,
     CatalogType,
     PokemonDetail,
 )
+from app.services.catalog_localization import (
+    LocalizedTerm,
+    localize_ability_terms,
+    localize_catalog_term,
+    localize_catalog_terms,
+)
+from app.services.description_formatting import split_description_paragraphs
 
 router = APIRouter(prefix="/api/v1/pokemon", tags=["pokemon catalog"])
 
@@ -41,6 +50,46 @@ def _images(pokemon: Any) -> list[Any]:
 def _primary_image(pokemon: Any) -> str | None:
     images = _images(pokemon)
     return images[0].image_url if images else None
+
+
+def _is_public_description(item: Any) -> bool:
+    return (
+        str(item.language_code).strip().casefold() == "zh-hant"
+        and str(item.description_kind).strip().casefold() == "description"
+    )
+
+
+def _localized_term(term: LocalizedTerm | None) -> CatalogLocalizedTerm | None:
+    if term is None:
+        return None
+    return CatalogLocalizedTerm(code=term.code, name_zh=term.name_zh)
+
+
+def _localized_profile(pokemon: Any) -> dict[str, Any]:
+    ability_details = localize_ability_terms(
+        pokemon.abilities,
+        pokemon.hidden_ability,
+    )
+    return {
+        "ability_details": [
+            CatalogAbilityTerm(
+                code=term.code,
+                name_zh=term.name_zh,
+                is_hidden=term.is_hidden,
+            )
+            for term in ability_details
+        ],
+        "egg_group_details": [
+            CatalogLocalizedTerm(code=term.code, name_zh=term.name_zh)
+            for term in localize_catalog_terms(pokemon.egg_groups, "egg_group")
+        ],
+        "habitat_detail": _localized_term(
+            localize_catalog_term(pokemon.habitat, "habitat")
+        ),
+        "growth_rate_detail": _localized_term(
+            localize_catalog_term(pokemon.growth_rate, "growth_rate")
+        ),
+    }
 
 
 def _catalog_item(pokemon: Any) -> CatalogPokemon:
@@ -119,9 +168,14 @@ def pokemon_detail(
                 content=item.content,
                 content_hash=item.content_hash,
                 is_primary=item.is_primary,
+                paragraphs=list(split_description_paragraphs(item.content)),
             )
             for item in sorted(
-                pokemon.descriptions,
+                (
+                    item
+                    for item in pokemon.descriptions
+                    if _is_public_description(item)
+                ),
                 key=lambda item: (
                     item.language_code,
                     item.description_kind,
@@ -161,6 +215,7 @@ def pokemon_detail(
         color=pokemon.color,
         shape=pokemon.shape,
         growth_rate=pokemon.growth_rate,
+        **_localized_profile(pokemon),
         capture_rate=pokemon.capture_rate,
         is_baby=pokemon.is_baby,
     )

@@ -15,7 +15,7 @@ class RecommendationRequest(BaseModel):
     )
     generate_explanation: bool = Field(
         default=False,
-        description="是否呼叫外部模型產生解釋",
+        description="是否呼叫外部模型為 Top 1 產生契合分析",
     )
 
 
@@ -94,8 +94,8 @@ class ExplanationResponse(BaseModel):
             raise ValueError("explanation citations must be unique")
         if any(not re.fullmatch(r"ev_[0-9a-f]{32}", item) for item in self.citations):
             raise ValueError("explanation citation has an invalid evidence ID")
-        if (self.provider == "local") != self.used_fallback:
-            raise ValueError("local provider and fallback status must agree")
+        if (self.provider != "gemini") != self.used_fallback:
+            raise ValueError("provider and fallback status must agree")
         return self
 
 
@@ -127,4 +127,6 @@ class RecommendationResponse(BaseModel):
         pokemon_ids = [result.pokemon.id for result in self.results]
         if len(set(pokemon_ids)) != 3:
             raise ValueError("recommendations must contain three unique Pokémon")
+        if any(result.explanation is not None for result in self.results[1:]):
+            raise ValueError("only the top-ranked recommendation may include an explanation")
         return self

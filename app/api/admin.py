@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.catalog import _catalog_item, _images
+from app.api.catalog import _catalog_item, _images, _localized_profile
 from app.api.deps import get_session
 from app.repositories.admin import AdminPokemonRepository
 from app.repositories.personality_admin import AdminPersonalityRepository
@@ -193,6 +193,7 @@ def _detail(pokemon: Any) -> AdminPokemonDetail:
         color=pokemon.color,
         shape=pokemon.shape,
         growth_rate=pokemon.growth_rate,
+        **_localized_profile(pokemon),
         capture_rate=pokemon.capture_rate,
         is_baby=pokemon.is_baby,
         is_active=pokemon.is_active,

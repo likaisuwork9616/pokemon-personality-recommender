@@ -12,7 +12,12 @@
   const errorMessage = document.querySelector("#recommendation-error-message");
   const results = document.querySelector("#recommendation-results");
   const grid = document.querySelector("#recommendation-grid");
+  const alternatives = document.querySelector("#recommendation-alternatives");
   const algorithm = document.querySelector("#recommendation-algorithm");
+  const publicTraitGrid = document.querySelector("#public-trait-grid");
+  const publicTraitStatus = document.querySelector("#public-trait-status");
+  const publicTraitRevision = document.querySelector("#public-trait-revision");
+  const publicTypeWeightStatus = document.querySelector("#public-type-weight-status");
   let activeController = null;
 
   const element = (tagName, className, content) => {
@@ -45,6 +50,30 @@
       return null;
     }
     return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokedexNumber}.png`;
+  };
+
+  const pokemonImage = (pokemon, className = "recommendation-image") => {
+    const imageShell = element("div", className);
+    imageShell.append(element("span", "image-placeholder", "?"));
+    const fallbackImageUrl = officialArtworkUrl(pokemon.pokedex_number);
+    const imageUrl = safeImageUrl(pokemon.image_url) || fallbackImageUrl;
+    if (!imageUrl) return imageShell;
+
+    const image = document.createElement("img");
+    image.src = imageUrl;
+    image.alt = `${pokemon.name_zh || "寶可夢"} 圖像`;
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+    image.addEventListener("error", () => {
+      if (fallbackImageUrl && image.src !== fallbackImageUrl) {
+        image.src = fallbackImageUrl;
+        return;
+      }
+      image.remove();
+    });
+    imageShell.append(image);
+    return imageShell;
   };
 
   const responseError = (payload, response) => {
@@ -90,7 +119,7 @@
       element(
         "p",
         "analysis-source",
-        `已融合人格訊號與 ${citationCount} 段圖鑑依據`,
+        `已融合人格、屬性權重與 ${citationCount} 段圖鑑依據`,
       ),
     );
     return section;
@@ -98,7 +127,7 @@
 
   const resultCard = (result) => {
     const pokemon = result.pokemon;
-    const card = element("article", `recommendation-card rank-${result.rank}`);
+    const card = element("article", `recommendation-card primary-result rank-${result.rank}`);
     const heading = element("div", "recommendation-card-heading");
     const rank = element("div", "rank-mark");
     rank.append(element("span", "", "RANK"), element("strong", "", result.rank));
@@ -112,27 +141,7 @@
     title.append(detailLink);
     identity.append(title, element("p", "english-name", pokemon.name_en || "—"));
 
-    const imageShell = element("div", "recommendation-image");
-    imageShell.append(element("span", "image-placeholder", "?"));
-    const fallbackImageUrl = officialArtworkUrl(pokemon.pokedex_number);
-    const imageUrl = safeImageUrl(pokemon.image_url) || fallbackImageUrl;
-    if (imageUrl) {
-      const image = document.createElement("img");
-      image.src = imageUrl;
-      image.alt = `${pokemon.name_zh || "寶可夢"} 圖像`;
-      image.loading = "lazy";
-      image.decoding = "async";
-      image.referrerPolicy = "no-referrer";
-      image.addEventListener("error", () => {
-        if (fallbackImageUrl && image.src !== fallbackImageUrl) {
-          image.src = fallbackImageUrl;
-          return;
-        }
-        image.remove();
-      });
-      imageShell.append(image);
-    }
-    heading.append(rank, identity, imageShell);
+    heading.append(rank, identity, pokemonImage(pokemon));
 
     const typeList = element("div", "recommendation-types");
     String(pokemon.types || "未知")
@@ -154,6 +163,31 @@
     return card;
   };
 
+  const alternativeResultCard = (result) => {
+    const pokemon = result.pokemon;
+    const card = element("article", `alternative-result-card rank-${result.rank}`);
+    const content = element("div", "alternative-result-content");
+    const dex = String(pokemon.pokedex_number).padStart(4, "0");
+    content.append(
+      element("p", "alternative-result-rank", `RANK ${result.rank} · #${dex}`),
+    );
+
+    const title = element("h3");
+    const detailLink = element("a", "", pokemon.name_zh || "未命名寶可夢");
+    detailLink.href = `/pokemon/${encodeURIComponent(pokemon.id)}`;
+    title.append(detailLink);
+    content.append(title);
+
+    const details = element("div", "alternative-result-details");
+    details.append(
+      element("span", "", pokemon.types || "未知屬性"),
+      element("strong", "", `契合 ${percent(result.scores.total)}%`),
+    );
+    content.append(details);
+    card.append(pokemonImage(pokemon, "alternative-result-image"), content);
+    return card;
+  };
+
   const renderResults = (payload) => {
     if (
       !payload
@@ -163,7 +197,9 @@
     ) {
       throw new Error("推薦結果格式不完整，請稍後再試。");
     }
-    grid.replaceChildren(...payload.results.map(resultCard));
+    if (!alternatives) throw new Error("推薦結果容器不完整，請稍後再試。");
+    grid.replaceChildren(resultCard(payload.results[0]));
+    alternatives.replaceChildren(...payload.results.slice(1).map(alternativeResultCard));
     algorithm.textContent = `演算法版本：${payload.algorithm_version || "unknown"}`;
     results.hidden = false;
     results.focus({ preventScroll: true });
@@ -172,6 +208,85 @@
 
   const updateCounter = () => {
     counter.textContent = `${input.value.length} / 2000`;
+  };
+
+  const displayWeight = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+    return number.toLocaleString("zh-TW", { maximumFractionDigits: 2 });
+  };
+
+  const weightedTerm = (item) => {
+    const chip = element("span", "public-weighted-term");
+    chip.append(
+      element("span", "", item.term),
+      element("strong", "", `×${displayWeight(item.weight)}`),
+    );
+    return chip;
+  };
+
+  const publicTraitCard = (trait) => {
+    const terms = Array.isArray(trait.weighted_terms)
+      ? trait.weighted_terms.filter(
+          (item) => item && typeof item.term === "string" && Number.isFinite(Number(item.weight)),
+        )
+      : [];
+    const card = element("article", "public-trait-card");
+    const heading = element("div", "public-trait-card-heading");
+    heading.append(
+      element("h3", "", trait.name_zh || "未命名特質"),
+      element("span", "", `${terms.length} 個加權詞`),
+    );
+
+    const preview = element("div", "public-trait-preview");
+    preview.append(...terms.slice(0, 3).map(weightedTerm));
+    card.append(heading, preview);
+
+    if (terms.length > 3) {
+      const details = document.createElement("details");
+      details.className = "public-trait-details";
+      details.append(element("summary", "", "查看全部詞彙權重"));
+      const allTerms = element("div", "public-trait-terms");
+      allTerms.append(...terms.map(weightedTerm));
+      details.append(allTerms);
+      card.append(details);
+    }
+    return card;
+  };
+
+  const loadPublicTraits = async () => {
+    if (!publicTraitGrid || !publicTraitStatus || !publicTraitRevision) return;
+    try {
+      const response = await fetch("/api/v1/personality/traits", {
+        headers: { Accept: "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload.traits) || payload.traits.length === 0) {
+        throw new Error("invalid personality vocabulary response");
+      }
+      publicTraitGrid.replaceChildren(...payload.traits.map(publicTraitCard));
+      publicTraitGrid.hidden = false;
+      publicTraitStatus.textContent = `目前啟用 ${payload.traits.length} 種人格特質；點開卡片可查看全部詞彙權重。`;
+      publicTraitRevision.textContent = `SQL 詞庫 v${payload.revision || "—"}`;
+
+      const typeProfileCount = Number(payload.type_profile_count);
+      if (publicTypeWeightStatus && Number.isInteger(typeProfileCount) && typeProfileCount > 0) {
+        publicTypeWeightStatus.textContent = `已啟用 ${typeProfileCount} 種 · ${payload.type_weight_version || "屬性規則"}`;
+      } else if (publicTypeWeightStatus) {
+        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
+        publicTypeWeightStatus.classList.add("is-error");
+      }
+    } catch (_error) {
+      publicTraitGrid.replaceChildren();
+      publicTraitGrid.hidden = true;
+      publicTraitStatus.textContent = "目前無法載入人格詞庫；推薦功能仍可正常使用。";
+      publicTraitStatus.classList.add("is-error");
+      publicTraitRevision.textContent = "暫時無法讀取";
+      if (publicTypeWeightStatus) {
+        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
+        publicTypeWeightStatus.classList.add("is-error");
+      }
+    }
   };
 
   const requestRecommendation = async () => {
@@ -225,16 +340,10 @@
     input.setCustomValidity("");
     updateCounter();
   });
-  document.querySelectorAll("[data-example]").forEach((button) => {
-    button.addEventListener("click", () => {
-      input.value = button.dataset.example || "";
-      updateCounter();
-      input.focus();
-    });
-  });
   document.querySelector("#recommendation-retry")?.addEventListener(
     "click",
     requestRecommendation,
   );
   updateCounter();
+  loadPublicTraits();
 })();

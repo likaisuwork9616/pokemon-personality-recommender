@@ -243,6 +243,10 @@ class HybridRecommendationEngine:
             semantic = float(np.clip(candidate.retrieval_score / max_rrf_score, 0, 1))
             total = float(np.clip(alpha * personality + (1.0 - alpha) * semantic, 0, 1))
             pokemon_traits = profile_engine.get_top_traits(pokemon_persona)
+            type_weight_builder = getattr(profile_engine, "type_weight_signals", None)
+            type_weight_signals = (
+                type_weight_builder(row) if callable(type_weight_builder) else {}
+            )
 
             pokedex_value = row[profile_engine.id_col]
             pokedex_number = (
@@ -307,6 +311,7 @@ class HybridRecommendationEngine:
                 ],
                 "user_traits": profile_engine.get_top_traits(user_persona),
                 "pokemon_traits": pokemon_traits,
+                "type_weight_signals": type_weight_signals,
             }
             ranked.append(
                 (

@@ -38,9 +38,9 @@ def pokemon_fixture(identifier: int, *, name: str) -> SimpleNamespace:
         is_baby=False,
         height_m=Decimal("0.70"),
         weight_kg=Decimal("6.90"),
-        abilities="Overgrow",
-        hidden_ability="Chlorophyll",
-        egg_groups="Monster, Grass",
+        abilities="overgrow|chlorophyll",
+        hidden_ability="chlorophyll",
+        egg_groups="monster|plant",
         habitat="grassland",
         color="green",
         shape="quadruped",
@@ -70,7 +70,34 @@ def pokemon_fixture(identifier: int, *, name: str) -> SimpleNamespace:
                 content="會在陽光下休息。",
                 content_hash="a" * 64,
                 is_primary=True,
-            )
+            ),
+            namespace(
+                id=identifier * 100 + 1,
+                language_code="en",
+                description_kind="flavor_text",
+                source_key="csv:flavor_text_en",
+                content="It rests in the sunlight.",
+                content_hash="b" * 64,
+                is_primary=True,
+            ),
+            namespace(
+                id=identifier * 100 + 2,
+                language_code="mul",
+                description_kind="analysis",
+                source_key="csv:analysis_text",
+                content="沉著而重視夥伴。",
+                content_hash="c" * 64,
+                is_primary=True,
+            ),
+            namespace(
+                id=identifier * 100 + 3,
+                language_code="zh-Hant",
+                description_kind="admin_note",
+                source_key="admin:note",
+                content="僅供管理員參考。",
+                content_hash="d" * 64,
+                is_primary=False,
+            ),
         ],
         stats=namespace(
             hp=45,
@@ -160,12 +187,56 @@ class CatalogApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["name_zh"], "妙蛙種子")
         self.assertEqual(body["stats"]["base_stat_total"], 318)
-        self.assertEqual(body["descriptions"][0]["source_key"], "csv:description_zh")
+        self.assertEqual(
+            [
+                (
+                    item["language_code"],
+                    item["description_kind"],
+                    item["source_key"],
+                )
+                for item in body["descriptions"]
+            ],
+            [("zh-Hant", "description", "csv:description_zh")],
+        )
+        self.assertEqual(
+            body["descriptions"][0]["paragraphs"],
+            ["會在陽光下休息。"],
+        )
+        self.assertEqual(len(self.repository.items[0].descriptions), 4)
         self.assertEqual(
             [image["image_kind"] for image in body["images"]],
             ["artwork", "sprite"],
         )
         self.assertEqual(body["height_m"], 0.7)
+        self.assertEqual(body["abilities"], "overgrow|chlorophyll")
+        self.assertEqual(body["hidden_ability"], "chlorophyll")
+        self.assertEqual(
+            body["ability_details"],
+            [
+                {"code": "overgrow", "name_zh": "茂盛", "is_hidden": False},
+                {
+                    "code": "chlorophyll",
+                    "name_zh": "葉綠素",
+                    "is_hidden": True,
+                },
+            ],
+        )
+        self.assertEqual(body["egg_groups"], "monster|plant")
+        self.assertEqual(
+            body["egg_group_details"],
+            [
+                {"code": "monster", "name_zh": "怪獸"},
+                {"code": "plant", "name_zh": "植物"},
+            ],
+        )
+        self.assertEqual(
+            body["habitat_detail"],
+            {"code": "grassland", "name_zh": "草原"},
+        )
+        self.assertEqual(
+            body["growth_rate_detail"],
+            {"code": "medium-slow", "name_zh": "較慢"},
+        )
 
     def test_inactive_or_unknown_detail_is_reported_as_not_found(self):
         response = self.client.get("/api/v1/pokemon/999")
