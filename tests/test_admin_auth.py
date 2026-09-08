@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from app.services.admin_auth import (
+    AdminAccount,
     AdminAuth,
     AdminAuthConfig,
     AdminDisabledError,
@@ -83,6 +84,42 @@ class AdminAuthTests(unittest.TestCase):
         ):
             with self.subTest(env=env), self.assertRaises(ValueError):
                 AdminAuthConfig.from_env(env)
+
+    def test_named_accounts_receive_signed_role_permissions(self):
+        auth = AdminAuth(
+            AdminAuthConfig(
+                password=None,
+                session_secret="s" * 32,
+                accounts=(
+                    AdminAccount("reader", "viewer-password", "viewer"),
+                    AdminAccount("writer", "editor-password", "editor"),
+                ),
+            ),
+            clock=lambda: self.now,
+        )
+
+        token, viewer = auth.login("viewer-password", username="READER")
+
+        self.assertEqual(viewer.username, "reader")
+        self.assertEqual(viewer.role, "viewer")
+        self.assertTrue(viewer.can("admin:read"))
+        self.assertFalse(viewer.can("admin:write"))
+        self.assertEqual(auth.verify_session(token), viewer)
+        with self.assertRaises(InvalidAdminCredentials):
+            auth.login("viewer-password", username="unknown")
+
+        configured = AdminAuthConfig.from_env({
+            "ADMIN_SESSION_SECRET": "s" * 32,
+            "ADMIN_ACCOUNTS_JSON": (
+                '[{"username":"auditor","password":"secret",'
+                '"role":"viewer"}]'
+            ),
+        })
+        self.assertEqual(configured.accounts[0].username, "auditor")
+        with self.assertRaises(ValueError):
+            AdminAuthConfig.from_env({
+                "ADMIN_ACCOUNTS_JSON": '[{"username":"x","password":"p","role":"root"}]'
+            })
 
 
 if __name__ == "__main__":

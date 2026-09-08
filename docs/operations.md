@@ -32,7 +32,8 @@
 | `OPENAI_API_KEY` | 空白 | Gemini 失敗時使用的 OpenAI 備援 key |
 | `OPENAI_MODEL` | `gpt-5-mini` | OpenAI model ID |
 | `RAG_TIMEOUT_SECONDS` | `20` | 每個外部 provider 的 timeout |
-| `ADMIN_PASSWORD` | 空白 | 單一管理員密碼；空白時登入停用 |
+| `ADMIN_PASSWORD` | 空白 | 向下相容的 `admin` 角色密碼 |
+| `ADMIN_ACCOUNTS_JSON` | 空白 | `username / password / role` 管理帳號 JSON 陣列 |
 | `ADMIN_SESSION_SECRET` | 空白 | cookie 簽章 secret，至少 32 字元 |
 | `ADMIN_SESSION_TTL_SECONDS` | `28800` | 管理 session 有效秒數 |
 | `ADMIN_COOKIE_SECURE` | `false` | HTTPS 環境設為 `true` |
@@ -40,6 +41,22 @@
 | `HF_TOKEN` | 空白 | 下載 Hugging Face 模型的選配 token |
 
 Compose 會從 `POSTGRES_*` 組出容器內的 `DATABASE_URL`。從主機直接執行 Alembic 或 scripts 時，hostname 應使用 `localhost`，不能沿用容器內的 `db`。
+
+### 管理角色與 Audit Log
+
+`ADMIN_PASSWORD` 保留既有單一 `admin` 帳號。多帳號使用 `ADMIN_ACCOUNTS_JSON`，角色只接受 `viewer`、`editor`、`admin`：
+
+~~~env
+ADMIN_ACCOUNTS_JSON=[{"username":"reader","password":"replace-viewer-password","role":"viewer"},{"username":"editor","password":"replace-editor-password","role":"editor"}]
+~~~
+
+| 角色 | 管理資料讀取 | 寶可夢／人格詞庫／Reindex 寫入 | Audit Log 讀取 |
+| --- | --- | --- | --- |
+| `viewer` | 是 | 否 | 否 |
+| `editor` | 是 | 是 | 否 |
+| `admin` | 是 | 是 | 是 |
+
+管理寫入仍須同時通過簽章 session 與 CSRF。成功寫入會在同一資料庫交易加入 `admin_audit_logs`；記錄 actor、角色、action、resource、request ID、HTTP method、route 與時間，但不保存 request body、管理密碼或原始人格描述。可由 `GET /api/v1/admin/audit-logs` 使用 `actor`、`action`、`page`、`page_size` 查詢。
 
 ## Docker Compose
 
@@ -150,7 +167,7 @@ python scripts/import_pokemon.py
 python scripts/rebuild_embeddings.py --batch-size 64
 ~~~
 
-目前 migration head 是 `20260907_0007`。Importer 會驗證完整 CSV header、編號與欄位內容，可用 `--csv` 指定其他來源，也可用 `--artwork-base-url` 覆寫 artwork URL。
+目前 migration head 是 `20260908_0008`。Importer 會驗證完整 CSV header、編號與欄位內容，可用 `--csv` 指定其他來源，也可用 `--artwork-base-url` 覆寫 artwork URL。
 
 若要改用另一個 embedding lineage，應讓 API、worker 與重建工具使用相同的 `EMBEDDING_MODEL` 和 `EMBEDDING_MODEL_VERSION`。API 在啟動時會拒絕與 active model metadata 不一致的 encoder。
 
@@ -193,6 +210,12 @@ JOIN personality_trait_synonyms AS pts
 WHERE pts.is_active = true
 ORDER BY pt.vector_index, pts.term
 LIMIT 30;
+
+SELECT actor_username, actor_role, action, resource_type, resource_id,
+       request_id, http_method, route, created_at
+FROM admin_audit_logs
+ORDER BY created_at DESC, id DESC
+LIMIT 50;
 ~~~
 
 CSV 只參與 seed。Runtime 的 catalog、Dense、Lexical 與人格查詢分別走 `app/repositories/pokemon.py`、`vector.py`、`retrieval.py` 與 `personality.py`。

@@ -3,6 +3,8 @@
 
   const state = {
     csrf: "",
+    role: "",
+    canWrite: false,
     page: 1,
     totalPages: 1,
     selected: null,
@@ -39,15 +41,32 @@
 
   const showDashboard = (session) => {
     state.csrf = session.csrf_token;
+    state.role = session.role;
+    state.canWrite = session.permissions.includes("admin:write");
     loginPanel.hidden = true;
     dashboard.hidden = false;
     byId("admin-logout").hidden = false;
+    byId("admin-identity").textContent = `${session.username} · ${session.role}`;
+    byId("admin-audit-link").hidden = !session.permissions.includes("audit:read");
+    byId("admin-new").hidden = !state.canWrite;
+    byId("admin-reindex").hidden = !state.canWrite;
+    Array.from(byId("admin-editor").elements).forEach((control) => {
+      control.disabled = !state.canWrite;
+    });
+    Array.from(byId("vocabulary-trait-form").elements).forEach((control) => {
+      control.disabled = !state.canWrite;
+    });
+    Array.from(byId("vocabulary-synonym-form").elements).forEach((control) => {
+      control.disabled = !state.canWrite;
+    });
     loadList();
     loadVocabulary();
   };
 
   const showLogin = () => {
     state.csrf = "";
+    state.role = "";
+    state.canWrite = false;
     state.selected = null;
     state.traits = [];
     state.vocabularyTraitCode = "";
@@ -196,7 +215,7 @@
       byId("admin-legendary").checked = data.is_legendary;
       byId("admin-mythical").checked = data.is_mythical;
       const toggle = byId("admin-toggle-active");
-      toggle.hidden = false;
+      toggle.hidden = !state.canWrite;
       toggle.textContent = data.is_active ? "停用" : "恢復";
       toggle.classList.toggle("button-danger", data.is_active);
       toggle.classList.toggle("button-success", !data.is_active);
@@ -449,6 +468,9 @@
     toggle.addEventListener("click", () => {
       saveSynonymRow(row, trait, row.dataset.active !== "true");
     });
+    for (const control of [term, language, weight, save, toggle]) {
+      control.disabled = !state.canWrite;
+    }
 
     termCell.append(term);
     languageCell.append(language);
@@ -521,9 +543,10 @@
     event.preventDefault();
     try {
       const password = byId("admin-password").value;
+      const username = byId("admin-username").value.trim();
       const session = await api("/session", {
         method: "POST",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       byId("admin-password").value = "";
       showDashboard(session);

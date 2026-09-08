@@ -74,6 +74,7 @@ def _validate_child_uniqueness(
 class AdminLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    username: str = Field(default="admin", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     password: str = Field(min_length=1, max_length=256)
 
 
@@ -81,6 +82,31 @@ class AdminSessionResponse(BaseModel):
     authenticated: Literal[True] = True
     csrf_token: str = Field(min_length=32)
     expires_at: int
+    username: str
+    role: Literal["viewer", "editor", "admin"]
+    permissions: list[Literal["admin:read", "admin:write", "audit:read"]]
+
+
+class AdminAuditLogResponse(BaseModel):
+    id: int
+    actor_username: str
+    actor_role: Literal["viewer", "editor", "admin"]
+    action: str
+    resource_type: str
+    resource_id: str | None = None
+    outcome: Literal["succeeded", "noop"]
+    request_id: str
+    http_method: str
+    route: str
+    created_at: datetime
+
+
+class AdminAuditLogPage(BaseModel):
+    items: list[AdminAuditLogResponse]
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+    total: int = Field(ge=0)
+    total_pages: int = Field(ge=0)
 
 
 class AdminDescriptionInput(BaseModel):

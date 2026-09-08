@@ -43,7 +43,7 @@
 - **可解釋分數**：每筆結果提供 `semantic`、`personality` 與 `total` 分數。
 - **資料庫化人格規則**：16 維人格特質、繁中／英文同義詞與權重保存在 PostgreSQL，可由管理端即時更新。
 - **屬性參考權重**：18 種寶可夢屬性的主、副屬性權重會納入人格計分。
-- **完整管理後台**：支援寶可夢維護、停用／恢復、人格詞庫管理、reindex 排程與進度查詢。
+- **RBAC 管理後台**：`viewer / editor / admin` 分權，支援寶可夢與人格詞庫維護、reindex、可追蹤 Audit Log。
 - **安全的索引更新**：新版 documents、chunks 與 embeddings 全部 ready 後，才原子切換 current index。
 - **多層 AI 備援**：Gemini → OpenAI → 本地證據分析；任何 LLM 失敗都不影響原始排名。
 - **可重現環境**：Alembic、Docker Compose、seed、embedding worker、CI 與測試均納入專案。
@@ -186,6 +186,12 @@ ADMIN_SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 ADMIN_COOKIE_SECURE=false
 ```
 
+`ADMIN_PASSWORD` 會建立向下相容的 `admin` 帳號。若需要多帳號分權，可再設定 JSON；不要把真實密碼提交到 repository：
+
+```env
+ADMIN_ACCOUNTS_JSON=[{"username":"reader","password":"replace-viewer-password","role":"viewer"},{"username":"editor","password":"replace-editor-password","role":"editor"}]
+```
+
 外部契合分析為選配。兩個 provider 都有設定時，固定以 Gemini 為第一順位：
 
 ```env
@@ -273,8 +279,9 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 - 寶可夢新增、查看、修改、停用與恢復
 - Index status、reindex 排程與進度查詢
 - 人格特質與同義詞的新增、修改、加權、停用與恢復
+- 依 actor／action 篩選與分頁查閱管理 Audit Log
 
-管理 session 使用簽章 HttpOnly cookie、`SameSite=Strict` 與 CSRF token。未設定管理密碼或 session secret 時，管理登入會停用。
+`viewer` 可讀管理資料，`editor` 可進行資料與索引異動，`admin` 再增加 Audit Log 查閱權限。所有成功寫入與 no-op reindex 都記錄 actor、角色、action、resource、request ID、route 與時間，不保存 request body。管理 session 使用簽章 HttpOnly cookie、`SameSite=Strict` 與 CSRF token；未設定任何管理帳號或 session secret 時，登入停用。
 
 ---
 
@@ -359,7 +366,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 
 - 主要展示環境為本機 Docker Compose，尚未提供公開 HTTPS 部署。
 - 離線評估集已涵蓋 20 種人格情境與三級相關性，但仍需持續由不同標註者交叉覆核。
-- 管理後台採單一密碼，尚無多使用者角色、操作審核或 audit log。
+- 管理帳號由環境變數提供；尚未加入企業 IdP／SSO 與資料庫內的帳號生命週期管理。
 - `/health/ready` 尚未在每次探測執行即時 DB round-trip。
 - `/metrics` 為 process-local 記憶體統計，程序重啟後會歸零。
 - 多語 Cross-Encoder 在本機 CPU／10 候選實測使 graded nDCG `0.095655 → 0.095588`，額外 p95 `993.18 ms`，未達 `+0.001 nDCG／≤250 ms` 門檻，故 runtime 預設關閉。
@@ -368,7 +375,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 
 - [x] 擴充人工標註集與相關性等級（20 題；1 部分相關、2 高度相關、3 核心標註）
 - [x] 評估 Cross-Encoder：目前模型未改善排序且超過延遲預算，保留可回退的選配實作與版本化報表
-- [ ] 增加角色權限與管理操作 Audit Log
+- [x] 增加 `viewer / editor / admin` 角色權限與資料庫管理操作 Audit Log
 - [ ] 將 Metrics 接入 Prometheus／Grafana
 - [ ] 補強 Readiness 的即時資料庫檢查
 - [ ] 建立公開 HTTPS 展示環境
