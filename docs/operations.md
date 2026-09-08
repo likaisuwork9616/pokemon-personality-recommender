@@ -228,7 +228,7 @@ python scripts/reindex_worker.py
 python -m unittest discover -s tests -v
 ~~~
 
-未設定 `TEST_DATABASE_URL` 時，PostgreSQL importer integration test 會略過。若要執行全部 157 個案例，請建立可丟棄的 pgvector database、啟用 `vector` extension，再設定：
+未設定 `TEST_DATABASE_URL` 時，PostgreSQL importer integration test 會略過。若要執行目前全部 186 個案例，請建立可丟棄的 pgvector database、啟用 `vector` extension，再設定：
 
 PowerShell：
 
