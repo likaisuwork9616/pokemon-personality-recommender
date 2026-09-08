@@ -11,9 +11,24 @@ from app.schemas import (
     PublicPersonalityTrait,
     PublicPersonalityWeightedTerm,
 )
+from app.services.personality_profile import (
+    TYPE_PERSONALITY_WEIGHTS,
+    TYPE_PERSONALITY_WEIGHTS_VERSION,
+)
 
 
 router = APIRouter(prefix="/api/v1/personality", tags=["personality vocabulary"])
+
+
+def _type_profile_count(*, trait_count: int) -> int:
+    if trait_count != 16:
+        raise RuntimeError("type weights require exactly 16 personality traits")
+    if len(TYPE_PERSONALITY_WEIGHTS) != 18 or any(
+        len(weights) != trait_count
+        for weights in TYPE_PERSONALITY_WEIGHTS.values()
+    ):
+        raise RuntimeError("type personality weight dimensions are inconsistent")
+    return len(TYPE_PERSONALITY_WEIGHTS)
 
 
 @router.get(
@@ -27,6 +42,7 @@ def list_personality_traits(
 ) -> PublicPersonalityCatalog:
     try:
         catalog = repository.public_catalog()
+        type_profile_count = _type_profile_count(trait_count=len(catalog.traits))
     except RuntimeError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -37,7 +53,9 @@ def list_personality_traits(
         ) from None
 
     response.headers["Cache-Control"] = "public, max-age=60"
-    response.headers["ETag"] = f'"personality-v{catalog.revision}"'
+    response.headers["ETag"] = (
+        f'"personality-v{catalog.revision}-{TYPE_PERSONALITY_WEIGHTS_VERSION}"'
+    )
     return PublicPersonalityCatalog(
         revision=catalog.revision,
         traits=[
@@ -51,4 +69,6 @@ def list_personality_traits(
             )
             for trait in catalog.traits
         ],
+        type_weight_version=TYPE_PERSONALITY_WEIGHTS_VERSION,
+        type_profile_count=type_profile_count,
     )

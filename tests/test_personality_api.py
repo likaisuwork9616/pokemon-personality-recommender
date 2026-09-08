@@ -59,6 +59,9 @@ class PublicPersonalityApiTests(unittest.TestCase):
                 "weighted_terms": [{"term": "詞0", "weight": 2.5}],
             },
         )
+        self.assertEqual(body["type_weight_version"], "type-persona-v1")
+        self.assertEqual(body["type_profile_count"], 18)
+        self.assertNotIn("type_profiles", body)
         serialized = response.text
         for private_field in (
             "language_code",
@@ -67,7 +70,10 @@ class PublicPersonalityApiTests(unittest.TestCase):
             "is_active",
         ):
             self.assertNotIn(private_field, serialized)
-        self.assertEqual(response.headers["etag"], '"personality-v12"')
+        self.assertEqual(
+            response.headers["etag"],
+            '"personality-v12-type-persona-v1"',
+        )
         self.assertEqual(response.headers["cache-control"], "public, max-age=60")
 
     def test_invalid_repository_snapshot_is_a_sanitized_503(self):

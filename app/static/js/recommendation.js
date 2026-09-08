@@ -16,6 +16,7 @@
   const publicTraitGrid = document.querySelector("#public-trait-grid");
   const publicTraitStatus = document.querySelector("#public-trait-status");
   const publicTraitRevision = document.querySelector("#public-trait-revision");
+  const publicTypeWeightStatus = document.querySelector("#public-type-weight-status");
   let activeController = null;
 
   const element = (tagName, className, content) => {
@@ -235,12 +236,24 @@
       publicTraitGrid.hidden = false;
       publicTraitStatus.textContent = `目前啟用 ${payload.traits.length} 種人格特質；點開卡片可查看全部詞彙權重。`;
       publicTraitRevision.textContent = `SQL 詞庫 v${payload.revision || "—"}`;
+
+      const typeProfileCount = Number(payload.type_profile_count);
+      if (publicTypeWeightStatus && Number.isInteger(typeProfileCount) && typeProfileCount > 0) {
+        publicTypeWeightStatus.textContent = `已啟用 ${typeProfileCount} 種 · ${payload.type_weight_version || "屬性規則"}`;
+      } else if (publicTypeWeightStatus) {
+        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
+        publicTypeWeightStatus.classList.add("is-error");
+      }
     } catch (_error) {
       publicTraitGrid.replaceChildren();
       publicTraitGrid.hidden = true;
       publicTraitStatus.textContent = "目前無法載入人格詞庫；推薦功能仍可正常使用。";
       publicTraitStatus.classList.add("is-error");
       publicTraitRevision.textContent = "暫時無法讀取";
+      if (publicTypeWeightStatus) {
+        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
+        publicTypeWeightStatus.classList.add("is-error");
+      }
     }
   };
 

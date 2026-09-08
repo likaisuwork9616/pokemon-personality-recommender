@@ -932,6 +932,45 @@ button:disabled {
   padding-top: 0.7rem;
 }
 
+.public-type-weight-note {
+  display: flex;
+  gap: 1.25rem;
+  padding: 1.15rem;
+  margin-top: 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(217, 239, 216, 0.78);
+  border: 1px solid #abc7b1;
+  border-radius: var(--radius);
+}
+
+.public-type-weight-note h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+
+.public-type-weight-note p:last-child {
+  max-width: 52rem;
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.public-type-weight-badge {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.7rem;
+  color: #ffffff;
+  background: var(--focus);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.public-type-weight-badge.is-error {
+  background: var(--danger);
+}
+
 .recommendation-state {
   display: flex;
   gap: 1.2rem;
@@ -1916,6 +1955,11 @@ button:disabled {
 
   .public-trait-grid {
     grid-template-columns: 1fr;
+  }
+
+  .public-type-weight-note {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .hero-copy h1 {
