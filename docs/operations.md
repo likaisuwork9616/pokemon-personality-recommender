@@ -266,7 +266,7 @@ python scripts/benchmark_vector_search.py \
 
 ## 離線推薦評估
 
-預設資料集是 `evaluation/recommendation_cases.jsonl`：
+預設資料集是 `evaluation/recommendation_cases.jsonl`，目前包含 20 種人格情境。每個候選使用三級人工相關性：`1` 為部分相關、`2` 為高度相關、`3` 為核心標註。報表同時輸出 binary recall／MRR、graded nDCG、高相關召回率與加權 Top-3 precision：
 
 ~~~bash
 python scripts/evaluate_recommendations.py \
@@ -283,4 +283,4 @@ python scripts/evaluate_recommendations.py \
   --min-hit-rate 0.20
 ~~~
 
-未達 `--min-recall` 或 `--min-hit-rate` 時，程式會回傳非零 exit code。目前 5 筆標註只適合檢查 pipeline 與建立變更基準；擴充案例前，不應把分數解讀為正式推薦品質。
+未達 `--min-recall` 或 `--min-hit-rate` 時，程式會回傳非零 exit code。這 20 筆標註適合做回歸與調參基準；正式品質判定仍應加入多位標註者、分歧紀錄與交叉覆核。
