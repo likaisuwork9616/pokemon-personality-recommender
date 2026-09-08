@@ -49,6 +49,11 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
                         )
                     }
             return RecommendationResponse(
+                algorithm_version=(
+                    "pgvector-fts-rrf-cross-encoder-v1"
+                    if getattr(engine, "reranker", None) is not None
+                    else "pgvector-fts-rrf-v1"
+                ),
                 results=[
                     _to_result(
                         raw,
