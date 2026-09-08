@@ -83,7 +83,6 @@ class GroundedExplanation:
 
 @dataclass(frozen=True)
 class RAGConfig:
-    provider: Literal["gemini", "openai"] = "gemini"
     gemini_api_key: str | None = None
     gemini_model: str = DEFAULT_GEMINI_MODEL
     openai_api_key: str | None = None
@@ -97,9 +96,6 @@ class RAGConfig:
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> RAGConfig:
         values = env if env is not None else os.environ
-        provider = values.get("LLM_PROVIDER", "gemini").strip().casefold()
-        if provider not in {"gemini", "openai"}:
-            raise ValueError("LLM_PROVIDER must be gemini or openai")
         try:
             timeout_seconds = float(values.get("RAG_TIMEOUT_SECONDS", "20"))
         except ValueError as exc:
@@ -107,7 +103,6 @@ class RAGConfig:
         if not 1 <= timeout_seconds <= 120:
             raise ValueError("RAG_TIMEOUT_SECONDS must be between 1 and 120")
         return cls(
-            provider=provider,
             gemini_api_key=values.get("GEMINI_API_KEY") or None,
             gemini_model=values.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip(),
             openai_api_key=values.get("OPENAI_API_KEY") or None,
@@ -190,8 +185,16 @@ def _default_openai_client(api_key: str, timeout_seconds: float) -> Any:
 class GroundedExplanationService:
     """Build one evidence packet and validate all model-produced citations."""
 
-    def __init__(self, provider: ExplanationProvider | None = None) -> None:
-        self.provider = provider
+    def __init__(
+        self,
+        providers: ExplanationProvider | Sequence[ExplanationProvider] | None = None,
+    ) -> None:
+        if providers is None:
+            self.providers: tuple[ExplanationProvider, ...] = ()
+        elif isinstance(providers, Sequence):
+            self.providers = tuple(providers)
+        else:
+            self.providers = (providers,)
 
     @classmethod
     def from_env(
@@ -202,34 +205,38 @@ class GroundedExplanationService:
         openai_client_factory: Callable[[str, float], Any] = _default_openai_client,
     ) -> GroundedExplanationService:
         config = RAGConfig.from_env(env)
-        if config.provider == "gemini":
-            if not config.gemini_api_key:
-                return cls()
+        providers: list[ExplanationProvider] = []
+        if config.gemini_api_key:
             try:
                 client = gemini_client_factory(
                     config.gemini_api_key,
                     config.timeout_seconds,
                 )
             except Exception:
-                return cls()
-            return cls(GeminiExplanationProvider(client, model=config.gemini_model))
+                pass
+            else:
+                providers.append(
+                    GeminiExplanationProvider(client, model=config.gemini_model)
+                )
 
-        if not config.openai_api_key:
-            return cls()
-        try:
-            client = openai_client_factory(
-                config.openai_api_key,
-                config.timeout_seconds,
-            )
-        except Exception:
-            return cls()
-        return cls(
-            OpenAIExplanationProvider(
-                client,
-                model=config.openai_model,
-                timeout_seconds=config.timeout_seconds,
-            )
-        )
+        if config.openai_api_key:
+            try:
+                client = openai_client_factory(
+                    config.openai_api_key,
+                    config.timeout_seconds,
+                )
+            except Exception:
+                pass
+            else:
+                providers.append(
+                    OpenAIExplanationProvider(
+                        client,
+                        model=config.openai_model,
+                        timeout_seconds=config.timeout_seconds,
+                    )
+                )
+
+        return cls(providers)
 
     def explain_many(
         self,
@@ -242,7 +249,7 @@ class GroundedExplanationService:
             int(result["database_id"]): self._local_explanation(result)
             for result in pokemon_results
         }
-        if self.provider is None:
+        if not self.providers:
             return local
 
         allowed = {
@@ -252,24 +259,25 @@ class GroundedExplanationService:
             }
             for result in pokemon_results
         }
-        try:
-            bundle = self.provider.generate(
-                self._build_prompt(user_text, pokemon_results)
-            )
-            validated = self._validate_bundle(bundle, allowed)
-        except Exception:
-            # Never expose provider errors because they may include prompts.
-            return local
-        return {
-            item.pokemon_id: GroundedExplanation(
-                text=item.text.strip(),
-                citations=tuple(item.citations),
-                provider=self.provider.name,
-                grounded=True,
-                used_fallback=False,
-            )
-            for item in validated.explanations
-        }
+        prompt = self._build_prompt(user_text, pokemon_results)
+        for provider in self.providers:
+            try:
+                bundle = provider.generate(prompt)
+                validated = self._validate_bundle(bundle, allowed)
+            except Exception:
+                # Never expose provider errors because they may include prompts.
+                continue
+            return {
+                item.pokemon_id: GroundedExplanation(
+                    text=item.text.strip(),
+                    citations=tuple(item.citations),
+                    provider=provider.name,
+                    grounded=True,
+                    used_fallback=provider.name != "gemini",
+                )
+                for item in validated.explanations
+            }
+        return local
 
     @staticmethod
     def _build_prompt(

@@ -94,8 +94,8 @@ class ExplanationResponse(BaseModel):
             raise ValueError("explanation citations must be unique")
         if any(not re.fullmatch(r"ev_[0-9a-f]{32}", item) for item in self.citations):
             raise ValueError("explanation citation has an invalid evidence ID")
-        if (self.provider == "local") != self.used_fallback:
-            raise ValueError("local provider and fallback status must agree")
+        if (self.provider != "gemini") != self.used_fallback:
+            raise ValueError("provider and fallback status must agree")
         return self
 
 
