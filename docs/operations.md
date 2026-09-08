@@ -20,12 +20,11 @@
 | `HNSW_EF_SEARCH` | `100` | HNSW 候選數，允許範圍 1–1000 |
 | `HNSW_ITERATIVE_SCAN` | `strict_order` | `strict_order` 或 `relaxed_order` |
 | `REINDEX_WORKER_POLL_SECONDS` | `2` | worker 沒有工作時的輪詢間隔 |
-| `LLM_PROVIDER` | `gemini` | `gemini` 或 `openai` |
-| `GEMINI_API_KEY` | 空白 | Gemini 契合分析的選配 key |
+| `GEMINI_API_KEY` | 空白 | 第一順位 Gemini 契合分析的選配 key |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model ID |
-| `OPENAI_API_KEY` | 空白 | OpenAI 契合分析的選配 key |
+| `OPENAI_API_KEY` | 空白 | Gemini 失敗時使用的 OpenAI 備援 key |
 | `OPENAI_MODEL` | `gpt-5-mini` | OpenAI model ID |
-| `RAG_TIMEOUT_SECONDS` | `20` | 外部 provider timeout |
+| `RAG_TIMEOUT_SECONDS` | `20` | 每個外部 provider 的 timeout |
 | `ADMIN_PASSWORD` | 空白 | 單一管理員密碼；空白時登入停用 |
 | `ADMIN_SESSION_SECRET` | 空白 | cookie 簽章 secret，至少 32 字元 |
 | `ADMIN_SESSION_TTL_SECONDS` | `28800` | 管理 session 有效秒數 |

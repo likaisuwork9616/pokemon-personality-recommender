@@ -107,6 +107,18 @@ class RecommendationSchemaTests(unittest.TestCase):
         }
         self.assertIsNotNone(RecommendationResponse(results=valid))
 
+        openai_fallback = copy.deepcopy(valid)
+        openai_fallback[0]["explanation"].update(
+            provider="openai",
+            used_fallback=True,
+        )
+        self.assertIsNotNone(RecommendationResponse(results=openai_fallback))
+
+        invalid_fallback_status = copy.deepcopy(openai_fallback)
+        invalid_fallback_status[0]["explanation"]["used_fallback"] = False
+        with self.assertRaisesRegex(ValidationError, "fallback status"):
+            RecommendationResponse(results=invalid_fallback_status)
+
         invalid = copy.deepcopy(valid)
         invalid[0]["explanation"]["citations"] = [f"ev_{2:032x}"]
         with self.assertRaises(ValidationError):
