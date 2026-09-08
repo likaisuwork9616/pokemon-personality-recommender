@@ -14,8 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.admin import router as admin_router
 from app.api.catalog import router as catalog_router
 from app.api.personality import router as personality_router
-from app.api.v1 import create_recommendation, router as v1_router
-from app.schemas import RecommendationResponse
+from app.api.v1 import router as v1_router
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
 from app.services.embedding import DEFAULT_MODEL_NAME
 from app.services.rag import GroundedExplanationService
@@ -188,7 +187,6 @@ def create_app(
             ),
             media_type="text/plain; version=0.0.4",
         )
-    application.add_api_route("/recommend", create_recommendation, methods=["POST"], response_model=RecommendationResponse, deprecated=True)
     return application
 
 app = create_app()
