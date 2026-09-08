@@ -51,6 +51,24 @@ def _result(number: int) -> dict[str, object]:
         ],
         "user_traits": ["忠誠守護者", "孤獨思考者"],
         "pokemon_traits": ["忠誠守護者", "溫柔照顧者"],
+        "type_weight_signals": {
+            "version": "type-persona-v1",
+            "combination_rule": "主屬性與副屬性原始權重相加後再正規化",
+            "type_profiles": [
+                {
+                    "role": "主屬性",
+                    "type_zh": "一般",
+                    "trait_weights": {
+                        "忠誠守護者": 1.3,
+                        "溫柔照顧者": 1.2,
+                    },
+                }
+            ],
+            "combined_top_traits": [
+                {"trait": "忠誠守護者", "weight": 1.3},
+                {"trait": "溫柔照顧者", "weight": 1.2},
+            ],
+        },
     }
 
 
@@ -116,6 +134,8 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertIn(f"ev_{1:032x}", prompt)
         self.assertIn('"persona_signals"', prompt)
         self.assertIn('"pokemon_profile"', prompt)
+        self.assertIn('"type_weight_signals"', prompt)
+        self.assertIn('"忠誠守護者":1.3', prompt)
         self.assertIn("寶可夢1會耐心陪伴並守護重要的夥伴", prompt)
 
     def test_system_instruction_requires_internalized_traditional_chinese_analysis(self):
@@ -173,6 +193,7 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertNotIn("檢索證據指出", explanation.text)
         self.assertIn("忠誠守護者", explanation.text)
         self.assertIn("圖鑑資料", explanation.text)
+        self.assertIn("屬性參考權重", explanation.text)
         self.assertIn("共同展現", explanation.text)
 
     def test_local_analysis_never_displays_english_retrieval_text(self):
@@ -321,10 +342,11 @@ class ProviderAdapterTests(unittest.TestCase):
 
 
 class RagApiTests(unittest.TestCase):
-    def test_explanations_are_one_batch_and_never_change_ranking(self):
+    def test_only_top_one_is_explained_and_ranking_never_changes(self):
         class Engine:
             def __init__(self):
                 self.explain_calls = 0
+                self.explained_ids = []
 
             @staticmethod
             def recommend(_text, top_k=3):
@@ -332,6 +354,9 @@ class RagApiTests(unittest.TestCase):
 
             def explain_results(self, _text, results):
                 self.explain_calls += 1
+                self.explained_ids.append(
+                    [int(result["database_id"]) for result in results]
+                )
                 return {
                     int(result["database_id"]): {
                         "text": "這是完全根據檢索證據產生的推薦說明。",
@@ -364,7 +389,10 @@ class RagApiTests(unittest.TestCase):
         ]
         self.assertEqual(plain_projection, explained_projection)
         self.assertEqual(engine.explain_calls, 1)
+        self.assertEqual(engine.explained_ids, [[1]])
         self.assertTrue(explained["results"][0]["explanation"]["grounded"])
+        self.assertIsNone(explained["results"][1]["explanation"])
+        self.assertIsNone(explained["results"][2]["explanation"])
 
 
 if __name__ == "__main__":

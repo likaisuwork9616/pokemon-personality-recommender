@@ -12,6 +12,7 @@
   const errorMessage = document.querySelector("#recommendation-error-message");
   const results = document.querySelector("#recommendation-results");
   const grid = document.querySelector("#recommendation-grid");
+  const alternatives = document.querySelector("#recommendation-alternatives");
   const algorithm = document.querySelector("#recommendation-algorithm");
   const publicTraitGrid = document.querySelector("#public-trait-grid");
   const publicTraitStatus = document.querySelector("#public-trait-status");
@@ -49,6 +50,30 @@
       return null;
     }
     return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${pokedexNumber}.png`;
+  };
+
+  const pokemonImage = (pokemon, className = "recommendation-image") => {
+    const imageShell = element("div", className);
+    imageShell.append(element("span", "image-placeholder", "?"));
+    const fallbackImageUrl = officialArtworkUrl(pokemon.pokedex_number);
+    const imageUrl = safeImageUrl(pokemon.image_url) || fallbackImageUrl;
+    if (!imageUrl) return imageShell;
+
+    const image = document.createElement("img");
+    image.src = imageUrl;
+    image.alt = `${pokemon.name_zh || "寶可夢"} 圖像`;
+    image.loading = "lazy";
+    image.decoding = "async";
+    image.referrerPolicy = "no-referrer";
+    image.addEventListener("error", () => {
+      if (fallbackImageUrl && image.src !== fallbackImageUrl) {
+        image.src = fallbackImageUrl;
+        return;
+      }
+      image.remove();
+    });
+    imageShell.append(image);
+    return imageShell;
   };
 
   const responseError = (payload, response) => {
@@ -94,7 +119,7 @@
       element(
         "p",
         "analysis-source",
-        `已融合人格訊號與 ${citationCount} 段圖鑑依據`,
+        `已融合人格、屬性權重與 ${citationCount} 段圖鑑依據`,
       ),
     );
     return section;
@@ -102,7 +127,7 @@
 
   const resultCard = (result) => {
     const pokemon = result.pokemon;
-    const card = element("article", `recommendation-card rank-${result.rank}`);
+    const card = element("article", `recommendation-card primary-result rank-${result.rank}`);
     const heading = element("div", "recommendation-card-heading");
     const rank = element("div", "rank-mark");
     rank.append(element("span", "", "RANK"), element("strong", "", result.rank));
@@ -116,27 +141,7 @@
     title.append(detailLink);
     identity.append(title, element("p", "english-name", pokemon.name_en || "—"));
 
-    const imageShell = element("div", "recommendation-image");
-    imageShell.append(element("span", "image-placeholder", "?"));
-    const fallbackImageUrl = officialArtworkUrl(pokemon.pokedex_number);
-    const imageUrl = safeImageUrl(pokemon.image_url) || fallbackImageUrl;
-    if (imageUrl) {
-      const image = document.createElement("img");
-      image.src = imageUrl;
-      image.alt = `${pokemon.name_zh || "寶可夢"} 圖像`;
-      image.loading = "lazy";
-      image.decoding = "async";
-      image.referrerPolicy = "no-referrer";
-      image.addEventListener("error", () => {
-        if (fallbackImageUrl && image.src !== fallbackImageUrl) {
-          image.src = fallbackImageUrl;
-          return;
-        }
-        image.remove();
-      });
-      imageShell.append(image);
-    }
-    heading.append(rank, identity, imageShell);
+    heading.append(rank, identity, pokemonImage(pokemon));
 
     const typeList = element("div", "recommendation-types");
     String(pokemon.types || "未知")
@@ -158,6 +163,31 @@
     return card;
   };
 
+  const alternativeResultCard = (result) => {
+    const pokemon = result.pokemon;
+    const card = element("article", `alternative-result-card rank-${result.rank}`);
+    const content = element("div", "alternative-result-content");
+    const dex = String(pokemon.pokedex_number).padStart(4, "0");
+    content.append(
+      element("p", "alternative-result-rank", `RANK ${result.rank} · #${dex}`),
+    );
+
+    const title = element("h3");
+    const detailLink = element("a", "", pokemon.name_zh || "未命名寶可夢");
+    detailLink.href = `/pokemon/${encodeURIComponent(pokemon.id)}`;
+    title.append(detailLink);
+    content.append(title);
+
+    const details = element("div", "alternative-result-details");
+    details.append(
+      element("span", "", pokemon.types || "未知屬性"),
+      element("strong", "", `契合 ${percent(result.scores.total)}%`),
+    );
+    content.append(details);
+    card.append(pokemonImage(pokemon, "alternative-result-image"), content);
+    return card;
+  };
+
   const renderResults = (payload) => {
     if (
       !payload
@@ -167,7 +197,9 @@
     ) {
       throw new Error("推薦結果格式不完整，請稍後再試。");
     }
-    grid.replaceChildren(...payload.results.map(resultCard));
+    if (!alternatives) throw new Error("推薦結果容器不完整，請稍後再試。");
+    grid.replaceChildren(resultCard(payload.results[0]));
+    alternatives.replaceChildren(...payload.results.slice(1).map(alternativeResultCard));
     algorithm.textContent = `演算法版本：${payload.algorithm_version || "unknown"}`;
     results.hidden = false;
     results.focus({ preventScroll: true });

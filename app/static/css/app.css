@@ -1017,9 +1017,7 @@ button:disabled {
 }
 
 .recommendation-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  display: block;
 }
 
 .recommendation-card {
@@ -1036,6 +1034,20 @@ button:disabled {
 
 .recommendation-card.rank-1 {
   border-top-color: var(--pokedex-red-dark);
+}
+
+.recommendation-card.primary-result {
+  width: min(100%, 66rem);
+  padding: clamp(1.25rem, 2.5vw, 2rem);
+  margin-inline: auto;
+}
+
+.recommendation-card.primary-result .recommendation-card-heading {
+  grid-template-columns: auto minmax(0, 1fr) 8rem;
+}
+
+.recommendation-card.primary-result .recommendation-image {
+  width: 8rem;
 }
 
 .recommendation-card.rank-2 {
@@ -1225,6 +1237,105 @@ button:disabled {
 .explanation-card .analysis-source {
   padding-top: 0.55rem;
   border-top: 1px solid rgba(137, 97, 0, 0.2);
+}
+
+.recommendation-alternatives {
+  width: min(100%, 66rem);
+  padding-top: 1.25rem;
+  margin: 1.5rem auto 0;
+  border-top: 1px solid var(--line-strong);
+}
+
+.recommendation-alternatives-heading {
+  margin-bottom: 0.75rem;
+}
+
+.recommendation-alternatives-heading h3 {
+  margin: 0.2rem 0 0;
+  font-size: 1.05rem;
+}
+
+.recommendation-alternatives-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.alternative-result-card {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.85rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0.35rem 0.8rem rgba(48, 70, 53, 0.08);
+}
+
+.alternative-result-image {
+  position: relative;
+  display: grid;
+  width: 4.5rem;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  background: var(--screen-deep);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.alternative-result-image .image-placeholder,
+.alternative-result-image img {
+  grid-area: 1 / 1;
+}
+
+.alternative-result-image img {
+  position: relative;
+  z-index: 1;
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+}
+
+.alternative-result-content {
+  min-width: 0;
+}
+
+.alternative-result-rank {
+  margin: 0;
+  color: var(--accent-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.alternative-result-content h3 {
+  margin: 0.15rem 0 0;
+  overflow: hidden;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alternative-result-content h3 a {
+  text-decoration: none;
+}
+
+.alternative-result-details {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.alternative-result-details strong {
+  flex: 0 0 auto;
+  color: var(--accent-dark);
 }
 
 .button-quiet:hover {
@@ -1853,6 +1964,14 @@ button:disabled {
   .recommendation-card {
     padding: 1.35rem;
   }
+
+  .recommendation-card.primary-result .recommendation-card-heading {
+    grid-template-columns: auto minmax(0, 1fr) 6.5rem;
+  }
+
+  .recommendation-card.primary-result .recommendation-image {
+    width: 6.5rem;
+  }
 }
 
 @media (max-width: 48rem) {
@@ -1962,6 +2081,10 @@ button:disabled {
     flex-direction: column;
   }
 
+  .recommendation-alternatives-grid {
+    grid-template-columns: 1fr;
+  }
+
   .hero-copy h1 {
     font-size: clamp(2.5rem, 12vw, 4.5rem);
   }
@@ -2039,8 +2162,16 @@ button:disabled {
     gap: 0.55rem;
   }
 
+  .recommendation-card.primary-result .recommendation-card-heading {
+    grid-template-columns: auto minmax(0, 1fr) 4.2rem;
+  }
+
   .recommendation-image {
     display: grid;
+    width: 4.2rem;
+  }
+
+  .recommendation-card.primary-result .recommendation-image {
     width: 4.2rem;
   }
 

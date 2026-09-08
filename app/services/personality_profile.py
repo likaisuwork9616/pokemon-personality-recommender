@@ -189,6 +189,52 @@ class PokemonPersonalityProfile:
             vectors.append(self.normalize_vec(vector))
         return np.asarray(vectors)
 
+    def type_weight_signals(self, row: pd.Series) -> dict[str, object]:
+        """Return the configured type weights with their active trait labels.
+
+        The payload is kept internal to recommendation/RAG orchestration. It lets
+        the explanation layer interpret the same positional weights that were
+        used for scoring without exposing the full rule table in the public API.
+        """
+
+        combined = np.zeros(len(self.traits), dtype=float)
+        type_profiles: list[dict[str, object]] = []
+        for index, pokemon_type in enumerate(self.parse_types(row)[:2]):
+            weights = TYPE_PERSONALITY_WEIGHTS.get(pokemon_type)
+            if weights is None:
+                continue
+            weight_array = np.asarray(weights, dtype=float)
+            combined += weight_array
+            type_profiles.append(
+                {
+                    "role": "主屬性" if index == 0 else "副屬性",
+                    "type_zh": pokemon_type,
+                    "trait_weights": {
+                        trait: float(weight)
+                        for trait, weight in zip(self.traits, weight_array, strict=True)
+                    },
+                }
+            )
+
+        ranked_indexes = sorted(
+            range(len(self.traits)),
+            key=lambda trait_index: (-combined[trait_index], trait_index),
+        )
+        combined_top_traits = [
+            {
+                "trait": self.traits[trait_index],
+                "weight": float(combined[trait_index]),
+            }
+            for trait_index in ranked_indexes[:3]
+            if combined[trait_index] > 0
+        ]
+        return {
+            "version": TYPE_PERSONALITY_WEIGHTS_VERSION,
+            "combination_rule": "主屬性與副屬性原始權重相加後再正規化",
+            "type_profiles": type_profiles,
+            "combined_top_traits": combined_top_traits,
+        }
+
     def get_top_traits(self, vector: np.ndarray, top_n: int = 3) -> list[str]:
         indexes = np.argsort(-vector)[:top_n]
         return [self.traits[index] for index in indexes if vector[index] > 0]
