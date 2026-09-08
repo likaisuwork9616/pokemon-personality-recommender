@@ -81,6 +81,9 @@ flowchart TB
     STAGED -->|全部成功後原子切換| DB
 
     WEB --> CDN[CloudFront Artwork]
+    WEB --> METRICS[/metrics Histogram + Counters]
+    METRICS --> PROM[Prometheus]
+    PROM --> GRAFANA[Grafana Dashboard]
 ```
 
 CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態與 embeddings 均直接由 PostgreSQL 讀取。
@@ -139,7 +142,7 @@ evidence_id
 | Retrieval | pgvector、HNSW、Exact Cosine Search、PostgreSQL FTS、jieba、RRF、選配 Cross-Encoder |
 | Embedding | SentenceTransformers `paraphrase-multilingual-MiniLM-L12-v2` |
 | RAG | Google Gemini、OpenAI、結構化輸出、Citation Allowlist |
-| Operations | Docker Compose、背景 Reindex Worker、Prometheus 格式 Metrics |
+| Operations | Docker Compose、背景 Reindex Worker、Prometheus 3.14、Grafana 13.2 |
 | Media Pipeline | Amazon S3、CloudFront、SHA-256 Manifest 驗證 |
 | Quality | unittest、GitHub Actions、20 題三級相關性離線評估、向量效能基準 |
 
@@ -224,6 +227,10 @@ Alembic Migration → 匯入 1,025 筆 Seed 資料 → 建立 Embeddings → 啟
 | --- | --- |
 | 人格推薦 | <http://localhost:8000/> |
 | 寶可夢圖鑑 | <http://localhost:8000/pokemon> |
+| Prometheus | <http://localhost:9090> |
+| Grafana | <http://localhost:3000> |
+
+Grafana 預設帳號為 `admin`；啟動前請在 `.env` 設定自己的 `GRAFANA_ADMIN_PASSWORD`。datasource 與「Pokémon Recommender Overview」dashboard 會自動 provision。
 
 停止服務：
 
@@ -368,7 +375,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 - 離線評估集已涵蓋 20 種人格情境與三級相關性，但仍需持續由不同標註者交叉覆核。
 - 管理帳號由環境變數提供；尚未加入企業 IdP／SSO 與資料庫內的帳號生命週期管理。
 - `/health/ready` 尚未在每次探測執行即時 DB round-trip。
-- `/metrics` 為 process-local 記憶體統計，程序重啟後會歸零。
+- 應用程式 counter 在程序重啟時歸零；Prometheus 能辨識 counter reset，時序資料依本機預設 `7d` retention 保存在 volume。
 - 多語 Cross-Encoder 在本機 CPU／10 候選實測使 graded nDCG `0.095655 → 0.095588`，額外 p95 `993.18 ms`，未達 `+0.001 nDCG／≤250 ms` 門檻，故 runtime 預設關閉。
 
 後續優先方向：
@@ -376,7 +383,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 - [x] 擴充人工標註集與相關性等級（20 題；1 部分相關、2 高度相關、3 核心標註）
 - [x] 評估 Cross-Encoder：目前模型未改善排序且超過延遲預算，保留可回退的選配實作與版本化報表
 - [x] 增加 `viewer / editor / admin` 角色權限與資料庫管理操作 Audit Log
-- [ ] 將 Metrics 接入 Prometheus／Grafana
+- [x] 將 request rate、5xx、p95 latency 與人格詞庫健康 Metrics 接入 Prometheus／Grafana
 - [ ] 補強 Readiness 的即時資料庫檢查
 - [ ] 建立公開 HTTPS 展示環境
 
