@@ -23,6 +23,7 @@ from app.services.catalog_localization import (
     localize_catalog_term,
     localize_catalog_terms,
 )
+from app.services.description_formatting import split_description_paragraphs
 
 router = APIRouter(prefix="/api/v1/pokemon", tags=["pokemon catalog"])
 
@@ -167,6 +168,7 @@ def pokemon_detail(
                 content=item.content,
                 content_hash=item.content_hash,
                 is_primary=item.is_primary,
+                paragraphs=list(split_description_paragraphs(item.content)),
             )
             for item in sorted(
                 (
