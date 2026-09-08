@@ -124,8 +124,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 5rem;
-  padding: 0.75rem max(1rem, calc((100vw - 76rem) / 2));
+  min-height: 6.25rem;
+  padding: 1rem max(1rem, calc((100vw - 76rem) / 2));
   color: #ffffff;
   background: linear-gradient(135deg, var(--pokedex-red-light), var(--pokedex-red) 54%, var(--pokedex-red-dark));
   border-bottom: 0.38rem solid var(--pokedex-red-dark);
@@ -135,7 +135,7 @@ button:disabled {
 
 .brand {
   display: inline-flex;
-  gap: 0.75rem;
+  gap: 0.9rem;
   align-items: center;
   text-decoration: none;
 }
@@ -157,21 +157,21 @@ button:disabled {
 }
 
 .brand strong {
-  font-size: 1rem;
+  font-size: 1.15rem;
   letter-spacing: 0.14em;
 }
 
 .brand small {
   margin-top: 0.25rem;
   color: #ffe8ec;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   letter-spacing: 0.08em;
 }
 
 .brand-mark {
   position: relative;
   display: grid;
-  width: 2.55rem;
+  width: 3.15rem;
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
@@ -191,14 +191,15 @@ button:disabled {
 
 .site-nav {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.4rem;
 }
 
 .site-nav a {
-  padding: 0.6rem 0.8rem;
+  padding: 0.75rem 1rem;
   color: #ffe8ec;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -1817,7 +1818,20 @@ button:disabled {
 
 @media (max-width: 48rem) {
   .site-header {
-    min-height: 4.2rem;
+    min-height: 5rem;
+    padding-block: 0.7rem;
+  }
+
+  .brand-mark {
+    width: 2.8rem;
+  }
+
+  .brand strong {
+    font-size: 1rem;
+  }
+
+  .site-nav a {
+    font-size: 0.92rem;
   }
 
   .brand small,

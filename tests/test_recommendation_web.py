@@ -33,7 +33,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
         self.assertIn('/static/js/recommendation.js?v=20260907-5', response.text)
-        self.assertIn('/static/css/app.css?v=20260908-1', response.text)
+        self.assertIn('/static/css/app.css?v=20260908-2', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("系統採用的人格特質", response.text)
         self.assertNotIn("data-example", response.text)
@@ -87,7 +87,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260908-1', response.text)
+                self.assertIn('/static/css/app.css?v=20260908-2', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -96,6 +96,15 @@ class RecommendationWebTests(unittest.TestCase):
             1
         ].split("}", maxsplit=1)[0]
         header_styles = styles.split(".site-header {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+        brand_title_styles = styles.split(".brand strong {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+        brand_mark_styles = styles.split(".brand-mark {", maxsplit=1)[1].split(
+            "}", maxsplit=1
+        )[0]
+        navigation_link_styles = styles.split(".site-nav a {", maxsplit=1)[1].split(
             "}", maxsplit=1
         )[0]
         hero_styles = styles.split(".recommendation-hero {", maxsplit=1)[1].split(
@@ -120,6 +129,10 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('body[data-theme="pokedex"]', styles)
         self.assertIn("var(--bg)", body_styles)
         self.assertIn("var(--pokedex-red", header_styles)
+        self.assertIn("min-height: 6.25rem", header_styles)
+        self.assertIn("width: 3.15rem", brand_mark_styles)
+        self.assertIn("font-size: 1.15rem", brand_title_styles)
+        self.assertIn("font-size: 1rem", navigation_link_styles)
         self.assertIn("var(--pokedex-red", hero_styles)
         self.assertIn("var(--signal-ink)", dex_number_styles)
         self.assertIn(".site-header .button-ghost", styles)
@@ -155,7 +168,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260908-1", response.text)
+        self.assertIn("/static/css/app.css?v=20260908-2", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
