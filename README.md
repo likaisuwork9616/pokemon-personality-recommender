@@ -418,15 +418,15 @@ python scripts/evaluate_cross_encoder.py
 
 已完成的人工標註、Cross-Encoder 評估、RBAC／Audit Log、Prometheus／Grafana 與即時資料庫 Readiness，已整合至前述核心能力與測試流程。以下只保留仍存在的限制，以及可以明確驗收的下一階段工作。
 
-| 優先級 | 現況限制與目標 | 完成條件 |
-| --- | --- | --- |
-| **P0** | **公開 HTTPS 與可回退部署**：目前完整環境仍以本機 Docker Compose 為主。 | 建立公開 HTTPS 環境、secret 管理、自動 migration、部署 smoke test、資料庫備份還原演練與一鍵 rollback。 |
-| **P1** | **擴大多人標註評估**：20 題能驗證流程，但不足以代表不同語氣與族群。 | 擴充至至少 100 題、兩位以上標註者，回報標註一致性與 personality／query-length slice metrics。 |
-| **P1** | **正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
-| **P1** | **帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
-| **P2** | **Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
-| **P2** | **下一輪排序品質實驗**：現有多語 Cross-Encoder 未通過 `+0.001 nDCG／≤250 ms` 門檻。 | 以輕量模型、特徵權重或 query expansion 進行離線 A/B；只有同時通過品質與延遲門檻才進入 runtime。 |
-| **P2** | **容量與恢復基準**：目前已有功能與單點故障驗證，尚未建立持續負載基準。 | 加入固定資料量的 load test、容量門檻、備份還原計時與定期故障演練。 |
+| 現況限制與目標 | 完成條件 |
+| --- | --- |
+| **P0 — 公開 HTTPS 與可回退部署**：目前完整環境仍以本機 Docker Compose 為主。 | 建立公開 HTTPS 環境、secret 管理、自動 migration、部署 smoke test、資料庫備份還原演練與一鍵 rollback。 |
+| **P1 — 擴大多人標註評估**：20 題能驗證流程，但不足以代表不同語氣與族群。 | 擴充至至少 100 題、兩位以上標註者，回報標註一致性與 personality／query-length slice metrics。 |
+| **P1 — 正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
+| **P1 — 帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
+| **P2 — Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
+| **P2 — 下一輪排序品質實驗**：現有多語 Cross-Encoder 未通過 `+0.001 nDCG／≤250 ms` 門檻。 | 以輕量模型、特徵權重或 query expansion 進行離線 A/B；只有同時通過品質與延遲門檻才進入 runtime。 |
+| **P2 — 容量與恢復基準**：目前已有功能與單點故障驗證，尚未建立持續負載基準。 | 加入固定資料量的 load test、容量門檻、備份還原計時與定期故障演練。 |
 
 ---
 
