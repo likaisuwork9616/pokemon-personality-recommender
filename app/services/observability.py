@@ -17,6 +17,9 @@ class RequestMetrics:
             lambda: [0] * len(self.DURATION_BUCKETS)
         )
         self._personality_refresh_failures = 0
+        self._database_readiness_checks = {"success": 0, "failure": 0, "timeout": 0}
+        self._database_readiness_healthy: bool | None = None
+        self._database_readiness_duration_seconds = 0.0
 
     def observe(self, method: str, route: str, status_code: int, duration_seconds: float) -> None:
         key = (method, route)
@@ -36,6 +39,19 @@ class RequestMetrics:
         with self._lock:
             self._personality_refresh_failures += 1
 
+    def observe_database_readiness(
+        self,
+        *,
+        outcome: str,
+        duration_seconds: float,
+    ) -> None:
+        if outcome not in self._database_readiness_checks:
+            raise ValueError("invalid database readiness outcome")
+        with self._lock:
+            self._database_readiness_checks[outcome] += 1
+            self._database_readiness_healthy = outcome == "success"
+            self._database_readiness_duration_seconds = max(0.0, duration_seconds)
+
     def render_prometheus(
         self,
         *,
@@ -48,6 +64,9 @@ class RequestMetrics:
                 key: tuple(values) for key, values in self._duration_buckets.items()
             }
             personality_refresh_failures = self._personality_refresh_failures
+            database_readiness_checks = dict(self._database_readiness_checks)
+            database_readiness_healthy = self._database_readiness_healthy
+            database_readiness_duration = self._database_readiness_duration_seconds
         lines = [
             "# HELP pokemon_http_requests_total HTTP requests by method, route and status.",
             "# TYPE pokemon_http_requests_total counter",
@@ -85,5 +104,22 @@ class RequestMetrics:
                 "# HELP pokemon_personality_refresh_healthy Whether the runtime personality vocabulary snapshot is healthy.",
                 "# TYPE pokemon_personality_refresh_healthy gauge",
                 f"pokemon_personality_refresh_healthy {1 if personality_refresh_healthy else 0}",
+            ])
+        lines.extend([
+            "# HELP pokemon_readiness_database_checks_total Live database readiness checks by outcome.",
+            "# TYPE pokemon_readiness_database_checks_total counter",
+        ])
+        for outcome, value in sorted(database_readiness_checks.items()):
+            lines.append(
+                f'pokemon_readiness_database_checks_total{{outcome="{outcome}"}} {value}'
+            )
+        if database_readiness_healthy is not None:
+            lines.extend([
+                "# HELP pokemon_readiness_database_healthy Whether the latest live database probe succeeded.",
+                "# TYPE pokemon_readiness_database_healthy gauge",
+                f"pokemon_readiness_database_healthy {1 if database_readiness_healthy else 0}",
+                "# HELP pokemon_readiness_database_check_duration_seconds Latest database readiness probe duration.",
+                "# TYPE pokemon_readiness_database_check_duration_seconds gauge",
+                f"pokemon_readiness_database_check_duration_seconds {database_readiness_duration:.9f}",
             ])
         return "\n".join(lines) + "\n"

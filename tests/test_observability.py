@@ -30,6 +30,18 @@ class ObservabilityTests(unittest.TestCase):
         self.assertIn('route="/example",le="0.5"} 1', rendered)
         self.assertIn('route="/example",le="1"} 2', rendered)
         self.assertIn('route="/example",le="+Inf"} 2', rendered)
+
+    def test_database_readiness_metrics_use_bounded_outcome_labels(self):
+        metrics = RequestMetrics()
+        metrics.observe_database_readiness(outcome="failure", duration_seconds=0.125)
+
+        rendered = metrics.render_prometheus()
+
+        self.assertIn('pokemon_readiness_database_checks_total{outcome="failure"} 1', rendered)
+        self.assertIn("pokemon_readiness_database_healthy 0", rendered)
+        self.assertIn("pokemon_readiness_database_check_duration_seconds 0.125000000", rendered)
+        with self.assertRaises(ValueError):
+            metrics.observe_database_readiness(outcome="private-error", duration_seconds=0)
     def test_request_id_and_prometheus_metrics_use_route_templates(self):
         with TestClient(create_app(_Engine)) as client:
             response = client.get("/api/v1/admin/pokemon/123456")

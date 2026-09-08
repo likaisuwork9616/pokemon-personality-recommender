@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from app.services.rag import GroundedExplanationService
 from app.services.recommendation import HybridRecommendationEngine
 from app.services.observability import RequestMetrics
 from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
+from app.services.readiness import DatabaseReadinessProbe, ReadinessConfig
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -91,27 +93,43 @@ def _default_engine_factory() -> Any:
             if reranker_config.enabled
             else None
         ),
+        database_readiness_probe=DatabaseReadinessProbe(session_factory),
     )
 
 def create_app(
     engine_factory: EngineFactory | None = None,
     *,
     admin_auth: AdminAuth | None = None,
+    database_readiness_probe: Any | None = None,
+    readiness_config: ReadinessConfig | None = None,
 ) -> FastAPI:
     factory = engine_factory or _default_engine_factory
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         try:
             application.state.recommendation_engine = factory()
+            engine_probe = getattr(
+                application.state.recommendation_engine,
+                "database_readiness_probe",
+                None,
+            )
+            application.state.database_readiness_probe = (
+                database_readiness_probe
+                if database_readiness_probe is not None
+                else engine_probe
+            )
             application.state.readiness_error = None
         except Exception as exc:
             application.state.recommendation_engine = None
+            application.state.database_readiness_probe = database_readiness_probe
             application.state.readiness_error = f"{type(exc).__name__}: {exc}"[:500]
         yield
         application.state.recommendation_engine = None
+        application.state.database_readiness_probe = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.1.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
+    application.state.readiness_config = readiness_config or ReadinessConfig.from_env()
 
     @application.middleware("http")
     async def observe_requests(request: Request, call_next):
@@ -176,14 +194,35 @@ def create_app(
         engine = getattr(application.state, "recommendation_engine", None)
         engine_available = engine is not None
         personality_healthy = _personality_refresh_healthy(engine)
-        is_ready = engine_available and personality_healthy
+        database_healthy = engine_available
+        probe = getattr(application.state, "database_readiness_probe", None)
+        if engine_available and probe is not None:
+            database_started = perf_counter()
+            outcome = "failure"
+            try:
+                database_healthy = bool(
+                    await asyncio.wait_for(
+                        asyncio.to_thread(probe.check),
+                        timeout=application.state.readiness_config.database_timeout_seconds,
+                    )
+                )
+                outcome = "success" if database_healthy else "failure"
+            except TimeoutError:
+                database_healthy = False
+                outcome = "timeout"
+            application.state.request_metrics.observe_database_readiness(
+                outcome=outcome,
+                duration_seconds=perf_counter() - database_started,
+            )
+        is_ready = engine_available and database_healthy and personality_healthy
         content = {"status": "ready" if is_ready else "not_ready"}
         if not is_ready:
-            content["reason"] = (
-                "personality_refresh_pending"
-                if engine_available and not personality_healthy
-                else "engine_unavailable"
-            )
+            if not engine_available:
+                content["reason"] = "engine_unavailable"
+            elif not database_healthy:
+                content["reason"] = "database_unavailable"
+            else:
+                content["reason"] = "personality_refresh_pending"
         return JSONResponse(status_code=200 if is_ready else 503, content=content)
     @application.get("/metrics", tags=["observability"], include_in_schema=False)
     async def metrics() -> PlainTextResponse:

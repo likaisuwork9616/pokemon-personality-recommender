@@ -41,6 +41,7 @@ class HybridRecommendationEngine:
         profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
         personality_revision: int | None = None,
         reranker: CrossEncoderReranker | None = None,
+        database_readiness_probe: Any | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -61,6 +62,7 @@ class HybridRecommendationEngine:
         self._personality_revision = personality_revision
         self._personality_refresh_error: str | None = None
         self.reranker = reranker
+        self.database_readiness_probe = database_readiness_probe
 
         database_ids = self._database_id_map(profile_engine)
         self._profile_state = (profile_engine, database_ids)
