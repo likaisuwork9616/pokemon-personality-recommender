@@ -19,6 +19,15 @@ RELEVANCE_LEVELS = {
 }
 
 
+def _percentile(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * fraction
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
 @dataclass(frozen=True)
 class EvaluationCase:
     case_id: str
@@ -114,6 +123,7 @@ def evaluate_recommendations(engine: Any, cases: Iterable[EvaluationCase], *, re
         "latency_ms": {
             "mean": round(mean(latencies), 4),
             "p50": round(median(latencies), 4),
+            "p95": round(_percentile(latencies, 0.95), 4),
             "max": round(max(latencies), 4),
         },
         "cases": rows,

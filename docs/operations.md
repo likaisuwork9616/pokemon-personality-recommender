@@ -19,6 +19,13 @@
 | `PGVECTOR_SEARCH_MODE` | `hnsw` | `hnsw` 線上搜尋或 `exact` 基準模式 |
 | `HNSW_EF_SEARCH` | `100` | HNSW 候選數，允許範圍 1–1000 |
 | `HNSW_ITERATIVE_SCAN` | `strict_order` | `strict_order` 或 `relaxed_order` |
+| `CROSS_ENCODER_ENABLED` | `false` | 是否啟用實驗性多語 Cross-Encoder 重排 |
+| `CROSS_ENCODER_MODEL` | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | Cross-Encoder model ID |
+| `CROSS_ENCODER_CANDIDATE_LIMIT` | `10` | 只重排基礎排名最前面的候選，範圍 3–50 |
+| `CROSS_ENCODER_WEIGHT` | `0.25` | 重排分數權重，範圍 `(0, 0.5]` |
+| `CROSS_ENCODER_LATENCY_BUDGET_MS` | `250` | 單次推論接受預算；超過時沿用基礎排名 |
+| `CROSS_ENCODER_BATCH_SIZE` | `10` | Cross-Encoder 推論 batch size |
+| `CROSS_ENCODER_MAX_LENGTH` | `256` | query／evidence pair 的 token 上限 |
 | `REINDEX_WORKER_POLL_SECONDS` | `2` | worker 沒有工作時的輪詢間隔 |
 | `GEMINI_API_KEY` | 空白 | 第一順位 Gemini 契合分析的選配 key |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini model ID |
@@ -284,3 +291,18 @@ python scripts/evaluate_recommendations.py \
 ~~~
 
 未達 `--min-recall` 或 `--min-hit-rate` 時，程式會回傳非零 exit code。這 20 筆標註適合做回歸與調參基準；正式品質判定仍應加入多位標註者、分歧紀錄與交叉覆核。
+
+### Cross-Encoder A/B
+
+資料庫與 ready vectors 準備完成後，可比較同一套 20 題標註的 baseline 與多語 Cross-Encoder：
+
+~~~bash
+python scripts/evaluate_cross_encoder.py \
+  --candidate-limit 10 \
+  --weight 0.25 \
+  --min-ndcg-improvement 0.001 \
+  --max-added-p95-ms 250 \
+  --output evaluation/cross_encoder_benchmark.json
+~~~
+
+程式只有在 graded nDCG 達到最低改善且額外 p95 未超過預算時才回傳 `0`。版本化 CPU 報表的結果為 nDCG `0.095655 → 0.095588`（`-0.000067`），額外 p95 `993.1806 ms`，兩項門檻皆未通過，因此 `CROSS_ENCODER_ENABLED` 保持 `false`。延遲預算是在推論完成後決定是否採用結果，不能回收已花費的推論時間；正式啟用前應改用更小模型、量化、GPU 或獨立 inference service 重新測量。

@@ -14,6 +14,7 @@ from app.repositories.personality import PersonalityRepository
 from app.repositories.vector import VectorRepository
 from app.services.hybrid_retrieval import HybridRetrievalService, RRF_K
 from app.services.rag import GroundedExplanationService
+from app.services.reranking import CrossEncoderReranker
 
 
 class RetrievalUnavailableError(RuntimeError):
@@ -39,6 +40,7 @@ class HybridRecommendationEngine:
         explanation_service: GroundedExplanationService | None = None,
         profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
         personality_revision: int | None = None,
+        reranker: CrossEncoderReranker | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -58,6 +60,7 @@ class HybridRecommendationEngine:
         self._profile_records_loader = profile_records_loader
         self._personality_revision = personality_revision
         self._personality_refresh_error: str | None = None
+        self.reranker = reranker
 
         database_ids = self._database_id_map(profile_engine)
         self._profile_state = (profile_engine, database_ids)
@@ -328,13 +331,19 @@ class HybridRecommendationEngine:
             )
 
         ranked.sort(key=lambda item: item[0])
-        selected = ranked[:top_k]
+        ordered = [item[1] for item in ranked]
+        if self.reranker is not None:
+            rerank_limit = min(len(ordered), self.reranker.config.candidate_limit)
+            outcome = self.reranker.rerank(text, ordered[:rerank_limit])
+            if outcome.applied:
+                ordered = list(outcome.candidates) + ordered[rerank_limit:]
+        selected = ordered[:top_k]
         if len(selected) != top_k:
             raise RetrievalUnavailableError(
                 f"hybrid index returned only {len(selected)} unique Pokémon"
             )
         results: list[dict[str, Any]] = []
-        for rank, (_sort_key, result) in enumerate(selected, start=1):
+        for rank, result in enumerate(selected, start=1):
             result["rank"] = rank
             results.append(result)
         return results

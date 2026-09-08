@@ -30,10 +30,22 @@ class ScoreBreakdown(BaseModel):
         le=1,
         description="規則式人格向量相似度",
     )
+    pre_rerank_total: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="啟用 Cross-Encoder 時，重排前的融合分數",
+    )
+    reranker: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Cross-Encoder 對 query 與候選證據的相關性分數",
+    )
     total: float = Field(
         ge=0,
         le=1,
-        description="語意與人格訊號的最終排序分數",
+        description="語意、人格與選配 Cross-Encoder 的最終排序分數",
     )
 
 

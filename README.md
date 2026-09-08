@@ -38,6 +38,7 @@
 
 - **自然語言人格推薦**：輸入個性、興趣或生活習慣，取得可重現的 Top 3 排名。
 - **Hybrid Retrieval**：結合 pgvector Dense Retrieval、jieba 中文斷詞、PostgreSQL Full Text Search 與 RRF。
+- **可量測的重排實驗**：內建多語 Cross-Encoder A/B 工具、品質門檻與延遲預算；目前 CPU 實測未達門檻，因此預設關閉。
 - **Grounded RAG**：LLM 只能使用當次 evidence allowlist，所有說明均可追溯至圖鑑文件與 chunk。
 - **可解釋分數**：每筆結果提供 `semantic`、`personality` 與 `total` 分數。
 - **資料庫化人格規則**：16 維人格特質、繁中／英文同義詞與權重保存在 PostgreSQL，可由管理端即時更新。
@@ -135,7 +136,7 @@ evidence_id
 | --- | --- |
 | Web／API | FastAPI、Pydantic、Jinja2、原生 JavaScript／CSS |
 | Database | PostgreSQL 16、SQLAlchemy、Alembic |
-| Retrieval | pgvector、HNSW、Exact Cosine Search、PostgreSQL FTS、jieba、RRF |
+| Retrieval | pgvector、HNSW、Exact Cosine Search、PostgreSQL FTS、jieba、RRF、選配 Cross-Encoder |
 | Embedding | SentenceTransformers `paraphrase-multilingual-MiniLM-L12-v2` |
 | RAG | Google Gemini、OpenAI、結構化輸出、Citation Allowlist |
 | Operations | Docker Compose、背景 Reindex Worker、Prometheus 格式 Metrics |
@@ -361,12 +362,12 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 - 管理後台採單一密碼，尚無多使用者角色、操作審核或 audit log。
 - `/health/ready` 尚未在每次探測執行即時 DB round-trip。
 - `/metrics` 為 process-local 記憶體統計，程序重啟後會歸零。
-- 尚未加入 Cross-Encoder reranker。
+- 多語 Cross-Encoder 在本機 CPU／10 候選實測使 graded nDCG `0.095655 → 0.095588`，額外 p95 `993.18 ms`，未達 `+0.001 nDCG／≤250 ms` 門檻，故 runtime 預設關閉。
 
 後續優先方向：
 
 - [x] 擴充人工標註集與相關性等級（20 題；1 部分相關、2 高度相關、3 核心標註）
-- [ ] 評估 Cross-Encoder 是否能在可接受延遲內改善排序
+- [x] 評估 Cross-Encoder：目前模型未改善排序且超過延遲預算，保留可回退的選配實作與版本化報表
 - [ ] 增加角色權限與管理操作 Audit Log
 - [ ] 將 Metrics 接入 Prometheus／Grafana
 - [ ] 補強 Readiness 的即時資料庫檢查

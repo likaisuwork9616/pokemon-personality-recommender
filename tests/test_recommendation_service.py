@@ -14,6 +14,7 @@ from app.services.recommendation import (
     HybridRecommendationEngine,
     RetrievalUnavailableError,
 )
+from app.services.reranking import RerankOutcome
 
 
 class _Encoder:
@@ -177,6 +178,7 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         *,
         profile_records_loader=None,
         personality_repository=None,
+        reranker=None,
     ):
         profile = _ProfileEngine()
         sessions = []
@@ -195,8 +197,31 @@ class HybridRecommendationEngineTests(unittest.TestCase):
             retrieval_service_factory=lambda _session: retriever,
             personality_repository_factory=lambda _session: personality,
             profile_records_loader=profile_records_loader,
+            reranker=reranker,
         )
         return engine, profile, sessions, retriever
+
+    def test_applied_reranker_reorders_the_bounded_candidates(self):
+        class _Reranker:
+            config = SimpleNamespace(candidate_limit=3)
+
+            @staticmethod
+            def rerank(_query, candidates):
+                return RerankOutcome(
+                    tuple(reversed(candidates)),
+                    elapsed_ms=10.0,
+                    applied=True,
+                    reason="applied",
+                )
+
+        engine, _profile, _sessions, _retriever = self._engine(
+            [_candidate(1, 0.03), _candidate(2, 0.02), _candidate(3, 0.01)],
+            reranker=_Reranker(),
+        )
+
+        results = engine.recommend("安靜守護夥伴")
+
+        self.assertEqual([item["database_id"] for item in results], [3, 2, 1])
 
     def test_query_is_encoded_once_and_returns_stable_top_three(self):
         candidates = [_candidate(2, 0.02), _candidate(1, 0.03), _candidate(3, 0.01)]

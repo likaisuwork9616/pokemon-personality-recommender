@@ -20,6 +20,7 @@ from app.services.embedding import DEFAULT_MODEL_NAME
 from app.services.rag import GroundedExplanationService
 from app.services.recommendation import HybridRecommendationEngine
 from app.services.observability import RequestMetrics
+from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -77,6 +78,7 @@ def _default_engine_factory() -> Any:
         personality_traits=personality_catalog.trait_names,
         persona_keywords=personality_catalog.synonyms_by_trait,
     )
+    reranker_config = CrossEncoderConfig.from_env()
     return HybridRecommendationEngine(
         profile_engine=profile_engine,
         session_factory=session_factory,
@@ -84,6 +86,11 @@ def _default_engine_factory() -> Any:
         explanation_service=GroundedExplanationService.from_env(),
         profile_records_loader=load_profile_records,
         personality_revision=personality_revision,
+        reranker=(
+            CrossEncoderReranker(reranker_config)
+            if reranker_config.enabled
+            else None
+        ),
     )
 
 def create_app(
