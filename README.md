@@ -140,7 +140,7 @@ evidence_id
 | RAG | Google Gemini、OpenAI、結構化輸出、Citation Allowlist |
 | Operations | Docker Compose、背景 Reindex Worker、Prometheus 格式 Metrics |
 | Media Pipeline | Amazon S3、CloudFront、SHA-256 Manifest 驗證 |
-| Quality | unittest、GitHub Actions、離線 Retrieval Evaluation、向量效能基準 |
+| Quality | unittest、GitHub Actions、20 題三級相關性離線評估、向量效能基準 |
 
 ---
 
@@ -326,7 +326,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 │   └── main.py              # FastAPI Application Factory
 ├── alembic/                 # 版本化 Schema Migrations
 ├── docs/                    # 本機操作與 AWS 圖片流程
-├── evaluation/              # 版本化離線推薦標註集
+├── evaluation/              # 20 題、1–3 級相關性的版本化離線標註集
 ├── pokemon_descript/        # 1,025 筆初始 Seed 資料
 ├── scripts/                 # Import、Embedding、Worker、Evaluation、AWS 工具
 ├── tests/                   # 單元、契約與 PostgreSQL 整合測試
@@ -357,7 +357,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 目前限制：
 
 - 主要展示環境為本機 Docker Compose，尚未提供公開 HTTPS 部署。
-- 離線評估集只有 5 筆標註，仍不足以代表正式推薦品質。
+- 離線評估集已涵蓋 20 種人格情境與三級相關性，但仍需持續由不同標註者交叉覆核。
 - 管理後台採單一密碼，尚無多使用者角色、操作審核或 audit log。
 - `/health/ready` 尚未在每次探測執行即時 DB round-trip。
 - `/metrics` 為 process-local 記憶體統計，程序重啟後會歸零。
@@ -365,7 +365,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 
 後續優先方向：
 
-- [ ] 擴充人工標註集與相關性等級
+- [x] 擴充人工標註集與相關性等級（20 題；1 部分相關、2 高度相關、3 核心標註）
 - [ ] 評估 Cross-Encoder 是否能在可接受延遲內改善排序
 - [ ] 增加角色權限與管理操作 Audit Log
 - [ ] 將 Metrics 接入 Prometheus／Grafana

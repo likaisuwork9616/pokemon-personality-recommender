@@ -22,10 +22,24 @@ def load_cases(path: Path) -> list[EvaluationCase]:
             continue
         payload = json.loads(line)
         try:
+            if "relevance" in payload:
+                relevance = {
+                    int(item["pokedex_number"]): int(item["grade"])
+                    for item in payload["relevance"]
+                }
+                if len(relevance) != len(payload["relevance"]):
+                    raise ValueError("duplicate Pokédex number")
+            else:
+                # Keep old binary datasets usable while versioned datasets move
+                # to explicit graded judgments.
+                relevance = {
+                    int(value): 1
+                    for value in payload["relevant_pokedex_numbers"]
+                }
             cases.append(EvaluationCase(
                 case_id=str(payload["id"]),
                 query=str(payload["query"]),
-                relevant_pokedex_numbers=frozenset(int(value) for value in payload["relevant_pokedex_numbers"]),
+                relevance_judgments=relevance,
             ))
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid evaluation case at line {line_number}") from exc
