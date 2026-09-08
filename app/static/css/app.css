@@ -43,6 +43,7 @@ body[data-theme="pokedex"] {
   min-height: 100vh;
   margin: 0;
   color: var(--text);
+  font-size: 1rem;
   background:
     radial-gradient(circle at 88% 4%, rgba(255, 255, 255, 0.78), transparent 28rem),
     radial-gradient(circle at 4% 42%, rgba(135, 190, 139, 0.28), transparent 32rem),
@@ -63,6 +64,10 @@ body::before {
 
 a {
   color: inherit;
+}
+
+small {
+  font-size: 0.875rem;
 }
 
 button,
@@ -164,7 +169,7 @@ button:disabled {
 .brand small {
   margin-top: 0.25rem;
   color: #ffe8ec;
-  font-size: 0.84rem;
+  font-size: 0.875rem;
   letter-spacing: 0.08em;
 }
 
@@ -240,7 +245,7 @@ button:disabled {
 .eyebrow {
   margin: 0 0 0.4rem;
   color: var(--accent-dark);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 800;
   letter-spacing: 0.16em;
 }
@@ -273,7 +278,7 @@ button:disabled {
 
 .field > span:first-child {
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
@@ -651,7 +656,7 @@ button:disabled {
 
 .button-small {
   padding: 0.45rem 0.65rem;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .index-source-list small {
@@ -752,7 +757,7 @@ button:disabled {
   background: #ffffff;
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 
@@ -770,7 +775,7 @@ button:disabled {
   justify-content: space-between;
   margin-top: 0.45rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .input-meta span:last-child {
@@ -781,7 +786,7 @@ button:disabled {
 .privacy-note {
   margin: 0.85rem 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
 }
 
 .privacy-note span {
@@ -822,7 +827,7 @@ button:disabled {
   color: #ffffff;
   background: var(--pokedex-red);
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 
@@ -838,7 +843,7 @@ button:disabled {
 
 .public-trait-status {
   margin: 1rem 0 0;
-  font-size: 0.82rem;
+  font-size: 0.875rem;
 }
 
 .public-trait-status.is-error {
@@ -901,7 +906,7 @@ button:disabled {
   background: var(--screen-deep);
   border: 1px solid #b8cfbd;
   border-radius: 999px;
-  font-size: 0.74rem;
+  font-size: 0.875rem;
 }
 
 .public-weighted-term > span {
@@ -924,7 +929,7 @@ button:disabled {
   padding-top: 0.65rem;
   color: var(--focus);
   cursor: pointer;
-  font-size: 0.76rem;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 
@@ -953,7 +958,7 @@ button:disabled {
   max-width: 52rem;
   margin: 0.45rem 0 0;
   color: var(--muted);
-  font-size: 0.84rem;
+  font-size: 0.875rem;
 }
 
 .public-type-weight-badge {
@@ -962,7 +967,7 @@ button:disabled {
   color: #ffffff;
   background: var(--focus);
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.875rem;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1067,8 +1072,8 @@ button:disabled {
 
 .rank-mark {
   display: grid;
-  width: 3.4rem;
-  height: 3.4rem;
+  width: 3.8rem;
+  height: 3.8rem;
   place-items: center;
   align-content: center;
   color: #ffffff;
@@ -1079,7 +1084,7 @@ button:disabled {
 }
 
 .rank-mark span {
-  font-size: 0.52rem;
+  font-size: 0.875rem;
   font-weight: 900;
   letter-spacing: 0.1em;
 }
@@ -1161,7 +1166,7 @@ button:disabled {
   justify-content: space-between;
   margin-bottom: 0.28rem;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
 }
 
 .score-heading strong {
@@ -1214,24 +1219,24 @@ button:disabled {
 }
 
 .explanation-provider {
-  padding: 0.15rem 0.4rem;
+  padding: 0.25rem 0.5rem;
   color: #3f2e00;
   background: var(--signal);
   border-radius: 999px;
-  font-size: 0.62rem;
+  font-size: 0.875rem;
   font-weight: 900;
 }
 
 .explanation-card p {
   margin-top: 0.55rem;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: 1rem;
 }
 
 .analysis-source {
   margin-top: 0.65rem;
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.875rem;
 }
 
 .explanation-card .analysis-source {
@@ -1306,7 +1311,7 @@ button:disabled {
 .alternative-result-rank {
   margin: 0;
   color: var(--accent-dark);
-  font-size: 0.68rem;
+  font-size: 0.875rem;
   font-weight: 900;
   letter-spacing: 0.08em;
 }
@@ -1330,7 +1335,7 @@ button:disabled {
   justify-content: space-between;
   margin-top: 0.4rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .alternative-result-details strong {
@@ -1492,7 +1497,7 @@ button:disabled {
 .dex-number {
   margin: 0;
   color: var(--signal-ink);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
   font-weight: 900;
   letter-spacing: 0.1em;
   font-variant-numeric: tabular-nums;
@@ -1500,7 +1505,7 @@ button:disabled {
 
 .generation-label {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
 }
 
 .pokemon-card h3 {
@@ -1516,7 +1521,7 @@ button:disabled {
   margin: 0.25rem 0 0.8rem;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1531,14 +1536,14 @@ button:disabled {
 .type-chip,
 .status-badge {
   display: inline-flex;
-  min-height: 1.7rem;
+  min-height: 2rem;
   padding: 0.2rem 0.58rem;
   align-items: center;
   color: #f9fbff;
   background: #435873;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 800;
 }
 
@@ -1661,7 +1666,7 @@ button:disabled {
   margin: 0 auto;
   color: var(--muted);
   border-top: 1px solid var(--line);
-  font-size: 0.8rem;
+  font-size: 0.875rem;
 }
 
 /* Detail page */
@@ -1806,7 +1811,7 @@ button:disabled {
   display: block;
   margin-bottom: 0.35rem;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1865,7 +1870,7 @@ button:disabled {
 
 .stat-heading span {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 

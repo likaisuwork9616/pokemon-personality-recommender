@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -37,7 +38,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
         self.assertIn('/static/js/recommendation.js?v=20260908-2', response.text)
-        self.assertIn('/static/css/app.css?v=20260908-4', response.text)
+        self.assertIn('/static/css/app.css?v=20260908-5', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("系統採用的人格特質", response.text)
         self.assertIn('id="public-type-weight-status"', response.text)
@@ -99,7 +100,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260908-4', response.text)
+                self.assertIn('/static/css/app.css?v=20260908-5', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -157,6 +158,21 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn(".recommendation-alternatives-grid", styles)
         self.assertIn(".alternative-result-card", styles)
 
+        rem_sizes = [
+            float(value)
+            for value in re.findall(r"font-size:\s*([0-9.]+)rem;", styles)
+        ]
+        pixel_sizes = [
+            float(value)
+            for value in re.findall(r"font-size:\s*([0-9.]+)px;", styles)
+        ]
+        self.assertTrue(rem_sizes)
+        self.assertTrue(pixel_sizes)
+        self.assertGreaterEqual(min(rem_sizes), 0.875)
+        self.assertGreaterEqual(min(pixel_sizes), 14)
+        self.assertIn(".explanation-card p", styles)
+        self.assertIn("font-size: 1rem", styles)
+
     def test_primary_and_alternative_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
             encoding="utf-8"
@@ -186,7 +202,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260908-4", response.text)
+        self.assertIn("/static/css/app.css?v=20260908-5", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
