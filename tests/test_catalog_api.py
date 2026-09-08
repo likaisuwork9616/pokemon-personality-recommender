@@ -198,6 +198,10 @@ class CatalogApiTests(unittest.TestCase):
             ],
             [("zh-Hant", "description", "csv:description_zh")],
         )
+        self.assertEqual(
+            body["descriptions"][0]["paragraphs"],
+            ["會在陽光下休息。"],
+        )
         self.assertEqual(len(self.repository.items[0].descriptions), 4)
         self.assertEqual(
             [image["image_kind"] for image in body["images"]],

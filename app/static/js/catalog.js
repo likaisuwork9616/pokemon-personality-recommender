@@ -291,9 +291,21 @@
         card.append(
           element("span", "description-meta", "中文圖鑑"),
         );
-        const paragraph = element("p", "", item.content);
-        if (item.language_code) paragraph.lang = item.language_code;
-        card.append(paragraph);
+        const paragraphTexts = (Array.isArray(item.paragraphs)
+          ? item.paragraphs
+          : []
+        ).filter((paragraph) => typeof paragraph === "string" && paragraph.trim());
+        (paragraphTexts.length ? paragraphTexts : [item.content]).forEach(
+          (paragraphText) => {
+            const paragraph = element(
+              "p",
+              "description-paragraph",
+              paragraphText,
+            );
+            if (item.language_code) paragraph.lang = item.language_code;
+            card.append(paragraph);
+          },
+        );
         container.append(card);
       });
       if (!available.length) container.append(element("p", "english-name", "目前沒有可顯示的圖鑑敘述。"));

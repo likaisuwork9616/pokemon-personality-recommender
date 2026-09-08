@@ -1641,6 +1641,14 @@ button:disabled {
 
 .description-card p {
   margin: 0;
+  line-height: 1.8;
+  line-break: strict;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.description-card p + p {
+  margin-top: 0.85rem;
 }
 
 .description-meta {

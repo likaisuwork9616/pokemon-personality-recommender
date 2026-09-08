@@ -39,6 +39,7 @@ class CatalogDescription(BaseModel):
     content: str
     content_hash: str
     is_primary: bool
+    paragraphs: list[str] = Field(default_factory=list)
 
 
 class CatalogImage(BaseModel):
