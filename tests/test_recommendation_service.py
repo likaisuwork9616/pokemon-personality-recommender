@@ -41,6 +41,7 @@ class _ProfileEngine:
     analysis_col = "analysis_text"
     img_col = "image_url"
     sprite_col = "sprite_url"
+    traits = tuple(f"特質{index}" for index in range(16))
 
     def __init__(self) -> None:
         self.st_model = _Encoder()
@@ -81,6 +82,23 @@ class _ProfileEngine:
     @staticmethod
     def get_top_traits(_vector):
         return ["忠誠守護者"]
+
+    @staticmethod
+    def type_weight_signals(_row):
+        return {
+            "version": "type-persona-v1",
+            "combination_rule": "主屬性與副屬性原始權重相加後再正規化",
+            "type_profiles": [
+                {
+                    "role": "主屬性",
+                    "type_zh": "一般",
+                    "trait_weights": {"忠誠守護者": 1.3},
+                }
+            ],
+            "combined_top_traits": [
+                {"trait": "忠誠守護者", "weight": 1.3}
+            ],
+        }
 
     @staticmethod
     def safe_get(row, column, default=""):
@@ -204,6 +222,10 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         self.assertEqual(evidence["content_hash"], "a" * 64)
         self.assertEqual((evidence["dense_rank"], evidence["lexical_rank"]), (1, 1))
         self.assertTrue(all(0 <= value <= 1 for value in results[0]["scores"].values()))
+        self.assertEqual(
+            results[0]["type_weight_signals"]["combined_top_traits"][0],
+            {"trait": "忠誠守護者", "weight": 1.3},
+        )
 
     def test_incomplete_unique_candidates_are_a_service_error(self):
         engine, _profile, sessions, _retriever = self._engine(

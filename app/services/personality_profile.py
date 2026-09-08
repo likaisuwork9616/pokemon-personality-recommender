@@ -33,6 +33,7 @@ TYPE_PERSONALITY_WEIGHTS: dict[str, tuple[float, ...]] = {
     "妖精": (2.6, 2.4, 1.8, 1.5, 1.0, 1.2, 2.6, 2.8, 2.5, 2.6, 2.0, 1.5, 1.4, 1.6, 1.8, 1.2),
     "一般": (1.2, 1.0, 1.0, 1.2, 1.0, 1.0, 1.0, 1.0, 1.2, 1.1, 1.3, 1.2, 1.0, 1.0, 1.0, 1.0),
 }
+TYPE_PERSONALITY_WEIGHTS_VERSION = "type-persona-v1"
 
 ENGLISH_TYPE_TO_ZH = {
     "Normal": "一般",
@@ -187,6 +188,52 @@ class PokemonPersonalityProfile:
             vector += self.text_to_persona_vector(profile_text)
             vectors.append(self.normalize_vec(vector))
         return np.asarray(vectors)
+
+    def type_weight_signals(self, row: pd.Series) -> dict[str, object]:
+        """Return the configured type weights with their active trait labels.
+
+        The payload is kept internal to recommendation/RAG orchestration. It lets
+        the explanation layer interpret the same positional weights that were
+        used for scoring without exposing the full rule table in the public API.
+        """
+
+        combined = np.zeros(len(self.traits), dtype=float)
+        type_profiles: list[dict[str, object]] = []
+        for index, pokemon_type in enumerate(self.parse_types(row)[:2]):
+            weights = TYPE_PERSONALITY_WEIGHTS.get(pokemon_type)
+            if weights is None:
+                continue
+            weight_array = np.asarray(weights, dtype=float)
+            combined += weight_array
+            type_profiles.append(
+                {
+                    "role": "主屬性" if index == 0 else "副屬性",
+                    "type_zh": pokemon_type,
+                    "trait_weights": {
+                        trait: float(weight)
+                        for trait, weight in zip(self.traits, weight_array, strict=True)
+                    },
+                }
+            )
+
+        ranked_indexes = sorted(
+            range(len(self.traits)),
+            key=lambda trait_index: (-combined[trait_index], trait_index),
+        )
+        combined_top_traits = [
+            {
+                "trait": self.traits[trait_index],
+                "weight": float(combined[trait_index]),
+            }
+            for trait_index in ranked_indexes[:3]
+            if combined[trait_index] > 0
+        ]
+        return {
+            "version": TYPE_PERSONALITY_WEIGHTS_VERSION,
+            "combination_rule": "主屬性與副屬性原始權重相加後再正規化",
+            "type_profiles": type_profiles,
+            "combined_top_traits": combined_top_traits,
+        }
 
     def get_top_traits(self, vector: np.ndarray, top_n: int = 3) -> list[str]:
         indexes = np.argsort(-vector)[:top_n]

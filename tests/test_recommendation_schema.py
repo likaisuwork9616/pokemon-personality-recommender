@@ -107,10 +107,33 @@ class RecommendationSchemaTests(unittest.TestCase):
         }
         self.assertIsNotNone(RecommendationResponse(results=valid))
 
+        openai_fallback = copy.deepcopy(valid)
+        openai_fallback[0]["explanation"].update(
+            provider="openai",
+            used_fallback=True,
+        )
+        self.assertIsNotNone(RecommendationResponse(results=openai_fallback))
+
+        invalid_fallback_status = copy.deepcopy(openai_fallback)
+        invalid_fallback_status[0]["explanation"]["used_fallback"] = False
+        with self.assertRaisesRegex(ValidationError, "fallback status"):
+            RecommendationResponse(results=invalid_fallback_status)
+
         invalid = copy.deepcopy(valid)
         invalid[0]["explanation"]["citations"] = [f"ev_{2:032x}"]
         with self.assertRaises(ValidationError):
             RecommendationResponse(results=invalid)
+
+        secondary_explanation = copy.deepcopy(valid)
+        secondary_explanation[1]["explanation"] = {
+            "text": "第二名不應執行或回傳額外的模型分析。",
+            "citations": [f"ev_{2:032x}"],
+            "provider": "gemini",
+            "grounded": True,
+            "used_fallback": False,
+        }
+        with self.assertRaisesRegex(ValidationError, "top-ranked"):
+            RecommendationResponse(results=secondary_explanation)
 
 
 if __name__ == "__main__":

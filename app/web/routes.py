@@ -15,7 +15,7 @@ router = APIRouter(include_in_schema=False)
 
 @router.get("/", response_class=HTMLResponse, name="pokemon_recommendation")
 async def recommendation_page(request: Request) -> HTMLResponse:
-    """Render the privacy-conscious Top 3 recommendation experience."""
+    """Render the privacy-conscious Top 1 focus and Top 3 ranking experience."""
 
     return templates.TemplateResponse(
         request=request,

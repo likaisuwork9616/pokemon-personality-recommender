@@ -473,6 +473,10 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         pokemon_id = created.json()["id"]
         self.assertEqual(created.json()["types"][0]["code"], "fire")
+        self.assertEqual(
+            created.json()["descriptions"][0]["description_kind"],
+            "analysis",
+        )
 
         updated = self.client.patch(
             f"/api/v1/admin/pokemon/{pokemon_id}",
