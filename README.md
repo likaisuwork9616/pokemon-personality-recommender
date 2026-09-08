@@ -47,6 +47,7 @@
 - **安全的索引更新**：新版 documents、chunks 與 embeddings 全部 ready 後，才原子切換 current index。
 - **多層 AI 備援**：Gemini → OpenAI → 本地證據分析；任何 LLM 失敗都不影響原始排名。
 - **可重現環境**：Alembic、Docker Compose、seed、embedding worker、CI 與測試均納入專案。
+- **即時 Readiness**：每次 `/health/ready` 都以 bounded `SELECT 1` 驗證 PostgreSQL，並與 liveness 分離。
 
 ---
 
@@ -374,7 +375,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 - 主要展示環境為本機 Docker Compose，尚未提供公開 HTTPS 部署。
 - 離線評估集已涵蓋 20 種人格情境與三級相關性，但仍需持續由不同標註者交叉覆核。
 - 管理帳號由環境變數提供；尚未加入企業 IdP／SSO 與資料庫內的帳號生命週期管理。
-- `/health/ready` 尚未在每次探測執行即時 DB round-trip。
+- Readiness 的資料庫檢查為輕量 `SELECT 1`，不代表下游 Gemini／OpenAI provider 可用。
 - 應用程式 counter 在程序重啟時歸零；Prometheus 能辨識 counter reset，時序資料依本機預設 `7d` retention 保存在 volume。
 - 多語 Cross-Encoder 在本機 CPU／10 候選實測使 graded nDCG `0.095655 → 0.095588`，額外 p95 `993.18 ms`，未達 `+0.001 nDCG／≤250 ms` 門檻，故 runtime 預設關閉。
 
@@ -384,7 +385,7 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 - [x] 評估 Cross-Encoder：目前模型未改善排序且超過延遲預算，保留可回退的選配實作與版本化報表
 - [x] 增加 `viewer / editor / admin` 角色權限與資料庫管理操作 Audit Log
 - [x] 將 request rate、5xx、p95 latency 與人格詞庫健康 Metrics 接入 Prometheus／Grafana
-- [ ] 補強 Readiness 的即時資料庫檢查
+- [x] 補強 Readiness 的即時資料庫 `SELECT 1`、timeout、失敗原因與 Prometheus 指標
 - [ ] 建立公開 HTTPS 展示環境
 
 ---

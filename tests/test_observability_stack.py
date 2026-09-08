@@ -33,6 +33,7 @@ class ObservabilityStackTests(unittest.TestCase):
         self.assertTrue(any("pokemon_http_requests_total" in item for item in expressions))
         self.assertTrue(any("histogram_quantile(0.95" in item for item in expressions))
         self.assertTrue(any("status=~\"5..\"" in item for item in expressions))
+        self.assertTrue(any("pokemon_readiness_database_healthy" in item for item in expressions))
 
         datasource = (
             ROOT

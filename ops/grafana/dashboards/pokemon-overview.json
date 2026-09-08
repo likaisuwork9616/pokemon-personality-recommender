@@ -23,8 +23,8 @@
       "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
       "id": 2,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
-      "targets": [{"editorMode": "code", "expr": "pokemon_personality_refresh_healthy{job=\"pokemon-api\"}", "legendFormat": "vocabulary", "range": true, "refId": "A"}],
-      "title": "Personality Vocabulary Health",
+      "targets": [{"editorMode": "code", "expr": "pokemon_personality_refresh_healthy{job=\"pokemon-api\"}", "legendFormat": "vocabulary", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "pokemon_readiness_database_healthy{job=\"pokemon-api\"}", "legendFormat": "database", "range": true, "refId": "B"}],
+      "title": "Runtime Dependency Health",
       "type": "stat"
     },
     {

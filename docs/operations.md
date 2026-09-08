@@ -19,6 +19,7 @@
 | `GRAFANA_ADMIN_USER` | `admin` | Grafana 初始管理帳號 |
 | `GRAFANA_ADMIN_PASSWORD` | 空白 | Grafana 初始密碼；啟動前應自行設定 |
 | `DATABASE_URL` | 依執行環境 | Alembic、CLI 與 application 的 SQLAlchemy URL |
+| `READINESS_DB_TIMEOUT_SECONDS` | `2` | 每次 readiness 即時 DB round-trip timeout，範圍 0.05–10 秒 |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | query 與 chunk encoder |
 | `EMBEDDING_MODEL_VERSION` | `default` | embedding lineage 版本 |
 | `PGVECTOR_SEARCH_MODE` | `hnsw` | `hnsw` 線上搜尋或 `exact` 基準模式 |
@@ -108,6 +109,8 @@ curl http://localhost:8000/metrics
 
 HTTP response 會包含 `X-Request-ID`。Request log 記錄 method、route template、status 與 duration，不讀取 request body。`/metrics` 使用固定 route template labels，提供 request counter 與 cumulative duration histogram；Prometheus 可用 histogram buckets 計算 p95。應用程序重啟會造成 counter reset，但已 scrape 的時序仍保存在 `prometheus_data` volume。
 
+`/health/live` 只確認 API process 存活，不碰資料庫。每次 `/health/ready` 都開啟獨立 session scope 執行 `SELECT 1`，並同時檢查推薦引擎與人格詞庫 snapshot；資料庫失敗或 timeout 固定回傳 `503` 與 `database_unavailable`，不輸出 exception 或連線資訊。最新結果、耗時與 `success / failure / timeout` 次數可從 `pokemon_readiness_database_*` metrics 查驗。
+
 Prometheus UI 位於 <http://localhost:9090>；Grafana 位於 <http://localhost:3000>。啟動前請在 `.env` 設定 `GRAFANA_ADMIN_PASSWORD`。Grafana 登入後，`Pokemon Recommender/Pokémon Recommender Overview` 已包含：
 
 - API scrape health
@@ -115,6 +118,7 @@ Prometheus UI 位於 <http://localhost:9090>；Grafana 位於 <http://localhost:
 - route p95 latency
 - HTTP 5xx ratio
 - 人格詞庫 snapshot health 與 refresh failures
+- 最新資料庫 readiness 與檢查結果
 
 Prometheus scrape 設定在 `ops/prometheus/prometheus.yml`；Grafana datasource、dashboard provider 與 JSON 在 `ops/grafana/`，容器啟動時自動載入。
 
