@@ -12,14 +12,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 
-from app.api.admin import get_admin_personality_repository, get_admin_repository, get_reindex_job_repository, get_reindex_service
+from app.api.admin import get_admin_audit_repository, get_admin_personality_repository, get_admin_repository, get_reindex_job_repository, get_reindex_service
 from app.main import create_app
 from app.personality_vocabulary import canonicalize_personality_text
 from app.repositories import AdminPokemonRepository
 from app.repositories.personality_admin import AdminPersonalityRepository
 from app.repositories.reindex import IndexSourceState, PokemonIndexState
 from app.schemas.admin import AdminPokemonCreate, AdminPokemonUpdate
-from app.services.admin_auth import AdminAuth, AdminAuthConfig
+from app.services.admin_auth import AdminAccount, AdminAuth, AdminAuthConfig
 from app.services.reindex import PokemonReindexSummary
 
 
@@ -110,6 +110,31 @@ class FakeSession:
 
     def rollback(self) -> None:
         self.rollbacks += 1
+
+
+class FakeAuditRepository:
+    def __init__(self) -> None:
+        self.entries = []
+
+    def record(self, **values):
+        entry = namespace(
+            id=len(self.entries) + 1,
+            created_at=datetime.now(timezone.utc),
+            **values,
+        )
+        self.entries.append(entry)
+        return entry
+
+    def list_entries(self, *, page, page_size, actor=None, action=None):
+        entries = [
+            item
+            for item in reversed(self.entries)
+            if (not actor or item.actor_username == actor.casefold())
+            and (not action or item.action == action)
+        ]
+        total = len(entries)
+        start = (page - 1) * page_size
+        return entries[start : start + page_size], total
 
 
 class FakeAdminRepository:
@@ -374,11 +399,16 @@ class AdminApiTests(unittest.TestCase):
         self.reindex_service = FakeReindexService()
         self.reindex_jobs = FakeReindexJobRepository()
         self.personality_repository = FakePersonalityRepository()
+        self.audit_repository = FakeAuditRepository()
         self.runtime_engine = RefreshingEngine()
         self.auth = AdminAuth(
             AdminAuthConfig(
                 password="portfolio-admin-password",
                 session_secret="s" * 32,
+                accounts=(
+                    AdminAccount("reader", "reader-password", "viewer"),
+                    AdminAccount("writer", "writer-password", "editor"),
+                ),
                 session_ttl_seconds=600,
             ),
             clock=lambda: 1_700_000_000,
@@ -399,19 +429,67 @@ class AdminApiTests(unittest.TestCase):
         self.application.dependency_overrides[get_admin_personality_repository] = (
             lambda: self.personality_repository
         )
+        self.application.dependency_overrides[get_admin_audit_repository] = (
+            lambda: self.audit_repository
+        )
         self.context = TestClient(self.application)
         self.client = self.context.__enter__()
 
     def tearDown(self) -> None:
         self.context.__exit__(None, None, None)
 
-    def login(self) -> tuple[str, str]:
+    def login(
+        self,
+        *,
+        username: str = "admin",
+        password: str = "portfolio-admin-password",
+    ) -> tuple[str, str]:
         response = self.client.post(
             "/api/v1/admin/session",
-            json={"password": "portfolio-admin-password"},
+            json={"username": username, "password": password},
         )
         self.assertEqual(response.status_code, 200)
         return response.json()["csrf_token"], response.headers["set-cookie"]
+
+    def test_role_permissions_and_audit_log_access(self):
+        viewer_csrf, _cookie = self.login(
+            username="reader",
+            password="reader-password",
+        )
+        session = self.client.get("/api/v1/admin/session").json()
+        self.assertEqual(session["role"], "viewer")
+        self.assertEqual(session["permissions"], ["admin:read"])
+        self.assertEqual(self.client.get("/api/v1/admin/pokemon").status_code, 200)
+        denied_write = self.client.post(
+            "/api/v1/admin/pokemon/1/deactivate",
+            headers={"X-CSRF-Token": viewer_csrf},
+        )
+        self.assertEqual(denied_write.status_code, 403)
+        self.assertEqual(denied_write.json()["detail"]["code"], "insufficient_admin_role")
+        self.assertEqual(self.client.get("/api/v1/admin/audit-logs").status_code, 403)
+
+        editor_csrf, _cookie = self.login(
+            username="writer",
+            password="writer-password",
+        )
+        mutation = self.client.post(
+            "/api/v1/admin/pokemon/1/deactivate",
+            headers={"X-CSRF-Token": editor_csrf},
+        )
+        self.assertEqual(mutation.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/admin/audit-logs").status_code, 403)
+
+        self.login()
+        audit = self.client.get(
+            "/api/v1/admin/audit-logs?action=pokemon.deactivate"
+        )
+        self.assertEqual(audit.status_code, 200)
+        self.assertEqual(audit.json()["total"], 1)
+        entry = audit.json()["items"][0]
+        self.assertEqual(entry["actor_username"], "writer")
+        self.assertEqual(entry["actor_role"], "editor")
+        self.assertEqual(entry["resource_id"], "1")
+        self.assertEqual(entry["request_id"], mutation.headers["x-request-id"])
 
     def test_authentication_cookie_and_generic_login_failure(self):
         self.assertEqual(

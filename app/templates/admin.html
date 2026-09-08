@@ -27,8 +27,12 @@
     <section id="admin-login-panel" class="admin-login card" aria-labelledby="login-title">
       <p class="eyebrow">SECURE ADMIN</p>
       <h1 id="login-title">管理員登入</h1>
-      <p class="muted">使用環境變數設定的單一管理密碼。密碼不會寫入資料庫。</p>
+      <p class="muted">使用環境變數設定的管理帳號登入；密碼不會寫入資料庫。</p>
       <form id="admin-login-form" class="stack-form">
+        <label class="field">
+          <span>帳號</span>
+          <input id="admin-username" name="username" value="admin" autocomplete="username" required maxlength="64">
+        </label>
         <label class="field">
           <span>管理密碼</span>
           <input id="admin-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
@@ -39,7 +43,8 @@
 
     <section id="admin-dashboard" hidden>
       <div class="page-heading">
-        <div><p class="eyebrow">CONTENT OPERATIONS</p><h1>寶可夢資料管理</h1></div>
+        <div><p class="eyebrow">CONTENT OPERATIONS</p><h1>寶可夢資料管理</h1><p id="admin-identity" class="muted"></p></div>
+        <a id="admin-audit-link" class="button button-ghost" href="/api/v1/admin/audit-logs" target="_blank" rel="noopener" hidden>Audit Log</a>
         <button id="admin-new" class="button button-primary" type="button">新增寶可夢</button>
       </div>
 

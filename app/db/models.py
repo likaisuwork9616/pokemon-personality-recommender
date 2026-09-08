@@ -129,6 +129,44 @@ class PersonalityVocabularyState(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
+class AdminAuditLog(Base):
+    """Append-only record of authenticated management mutations."""
+
+    __tablename__ = "admin_audit_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "actor_role IN ('viewer', 'editor', 'admin')",
+            name="actor_role_valid",
+        ),
+        CheckConstraint(
+            "outcome IN ('succeeded', 'noop')",
+            name="outcome_valid",
+        ),
+        Index("ix_admin_audit_logs_created", "created_at", "id"),
+        Index("ix_admin_audit_logs_actor", "actor_username", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        Identity(always=True),
+        primary_key=True,
+    )
+    actor_username: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_role: Mapped[str] = mapped_column(String(16), nullable=False)
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    resource_id: Mapped[str | None] = mapped_column(String(120))
+    outcome: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="succeeded", server_default=text("'succeeded'")
+    )
+    request_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    http_method: Mapped[str] = mapped_column(String(10), nullable=False)
+    route: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class Pokemon(Base):
     """One Pokémon species or form exposed by the catalog."""
 

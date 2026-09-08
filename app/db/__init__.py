@@ -2,6 +2,7 @@
 
 from app.db.base import Base
 from app.db.models import (
+    AdminAuditLog,
     EmbeddingModel,
     PersonalityTrait,
     PersonalityTraitSynonym,
@@ -19,6 +20,7 @@ from app.db.models import (
 )
 
 __all__ = [
+    "AdminAuditLog",
     "Base",
     "EmbeddingModel",
     "PersonalityTrait",

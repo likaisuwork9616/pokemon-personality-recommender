@@ -204,6 +204,25 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn("normalized_term", revision)
         self.assertIn("personality_vocabulary_state", revision)
 
+    def test_eighth_revision_adds_append_only_admin_audit_log(self):
+        audit = Base.metadata.tables["admin_audit_logs"]
+        checks = " ".join(
+            str(constraint.sqltext)
+            for constraint in audit.constraints
+            if isinstance(constraint, CheckConstraint)
+        )
+        self.assertIn("actor_role IN", checks)
+        self.assertIn("outcome IN", checks)
+        self.assertIn(
+            "ix_admin_audit_logs_created",
+            {item.name for item in audit.indexes},
+        )
+        revision = (
+            ROOT / "alembic" / "versions" / "20260908_0008_admin_audit_log.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260907_0007"', revision)
+        self.assertIn("admin_audit_logs", revision)
+
 
 if __name__ == "__main__":
     unittest.main()

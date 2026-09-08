@@ -15,11 +15,14 @@ from sqlalchemy.orm import Session
 from app.api.catalog import _catalog_item, _images, _localized_profile
 from app.api.deps import get_session
 from app.repositories.admin import AdminPokemonRepository
+from app.repositories.admin_audit import AdminAuditRepository
 from app.repositories.personality_admin import AdminPersonalityRepository
 from app.repositories.reindex import PokemonIndexState, PokemonReindexRepository
 from app.repositories.reindex_jobs import PokemonReindexJobRepository
 from app.repositories.vector import VectorRepository
 from app.schemas.admin import (
+    AdminAuditLogPage,
+    AdminAuditLogResponse,
     AdminIndexSourceStatus,
     AdminIndexStatus,
     AdminLoginRequest,
@@ -72,6 +75,12 @@ def get_admin_repository(
     return AdminPokemonRepository(session)
 
 
+def get_admin_audit_repository(
+    session: Annotated[Session, Depends(get_session)],
+) -> AdminAuditRepository:
+    return AdminAuditRepository(session)
+
+
 def get_admin_personality_repository(
     session: Annotated[Session, Depends(get_session)],
 ) -> AdminPersonalityRepository:
@@ -102,7 +111,10 @@ def require_admin(
     auth: Annotated[AdminAuth, Depends(get_admin_auth)],
 ) -> AdminSession:
     try:
-        return auth.verify_session(request.cookies.get(auth.config.cookie_name))
+        admin_session = auth.verify_session(request.cookies.get(auth.config.cookie_name))
+        request.state.admin_actor = admin_session.username
+        request.state.admin_role = admin_session.role
+        return admin_session
     except AdminDisabledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -129,10 +141,65 @@ def require_csrf(
     return admin_session
 
 
+def require_editor(
+    admin_session: Annotated[AdminSession, Depends(require_csrf)],
+) -> AdminSession:
+    if not admin_session.can("admin:write"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "insufficient_admin_role",
+                "message": "此帳號沒有管理寫入權限。",
+            },
+        )
+    return admin_session
+
+
+def require_audit_reader(
+    admin_session: Annotated[AdminSession, Depends(require_admin)],
+) -> AdminSession:
+    if not admin_session.can("audit:read"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "insufficient_admin_role",
+                "message": "此帳號沒有 Audit Log 查閱權限。",
+            },
+        )
+    return admin_session
+
+
 def _session_response(admin_session: AdminSession) -> AdminSessionResponse:
     return AdminSessionResponse(
         csrf_token=admin_session.csrf_token,
         expires_at=admin_session.expires_at,
+        username=admin_session.username,
+        role=admin_session.role,
+        permissions=list(admin_session.permissions),
+    )
+
+
+def _record_audit(
+    repository: AdminAuditRepository,
+    request: Request,
+    admin_session: AdminSession,
+    *,
+    action: str,
+    resource_type: str,
+    resource_id: str | int | UUID | None,
+    outcome: str = "succeeded",
+) -> None:
+    route = getattr(request.scope.get("route"), "path", request.url.path)
+    repository.record(
+        actor_username=admin_session.username,
+        actor_role=admin_session.role,
+        action=action,
+        resource_type=resource_type,
+        resource_id=str(resource_id) if resource_id is not None else None,
+        outcome=outcome,
+        request_id=getattr(request.state, "request_id", "unavailable")[:32],
+        http_method=request.method,
+        route=str(route)[:200],
     )
 
 
@@ -345,9 +412,22 @@ def _refresh_runtime_personality(
 def _commit_personality(
     repository: AdminPersonalityRepository,
     request: Request,
+    admin_session: AdminSession,
+    audit_repository: AdminAuditRepository,
+    *,
+    action: str,
+    resource_id: str,
 ) -> bool:
     try:
         repository.bump_revision()
+        _record_audit(
+            audit_repository,
+            request,
+            admin_session,
+            action=action,
+            resource_type="personality_vocabulary",
+            resource_id=resource_id,
+        )
         repository.session.commit()
     except IntegrityError:
         repository.session.rollback()
@@ -392,7 +472,7 @@ def _invalid_personality_vocabulary(exc: ValueError) -> HTTPException:
 def login(payload: AdminLoginRequest, request: Request) -> JSONResponse:
     auth: AdminAuth = request.app.state.admin_auth
     try:
-        token, admin_session = auth.login(payload.password)
+        token, admin_session = auth.login(payload.password, username=payload.username)
     except AdminDisabledError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -421,6 +501,49 @@ def session_status(
     admin_session: Annotated[AdminSession, Depends(require_admin)],
 ) -> AdminSessionResponse:
     return _session_response(admin_session)
+
+
+@router.get(
+    "/audit-logs",
+    response_model=AdminAuditLogPage,
+    summary="查閱管理操作 Audit Log",
+)
+def list_audit_logs(
+    _admin_session: Annotated[AdminSession, Depends(require_audit_reader)],
+    repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
+    actor: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
+    action: Annotated[str | None, Query(min_length=1, max_length=80)] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> AdminAuditLogPage:
+    entries, total = repository.list_entries(
+        page=page,
+        page_size=page_size,
+        actor=actor,
+        action=action,
+    )
+    return AdminAuditLogPage(
+        items=[
+            AdminAuditLogResponse(
+                id=item.id,
+                actor_username=item.actor_username,
+                actor_role=item.actor_role,
+                action=item.action,
+                resource_type=item.resource_type,
+                resource_id=item.resource_id,
+                outcome=item.outcome,
+                request_id=item.request_id,
+                http_method=item.http_method,
+                route=item.route,
+                created_at=item.created_at,
+            )
+            for item in entries
+        ],
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=(total + page_size - 1) // page_size,
+    )
 
 
 @router.delete("/session", status_code=204, summary="管理員登出")
@@ -463,8 +586,9 @@ def update_personality_trait(
     request: Request,
     response: Response,
     trait_code: str,
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPersonalityTrait:
     trait = repository.get_trait(trait_code)
     if trait is None:
@@ -478,7 +602,14 @@ def update_personality_trait(
         return _personality_trait(trait)
     _set_personality_refresh_response(
         response,
-        _commit_personality(repository, request),
+        _commit_personality(
+            repository,
+            request,
+            admin_session,
+            audit_repository,
+            action="personality.trait.update",
+            resource_id=trait_code,
+        ),
     )
     return _personality_trait(trait)
 
@@ -495,8 +626,9 @@ def create_personality_synonym(
     request: Request,
     response: Response,
     trait_code: str,
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPersonalitySynonym:
     trait = repository.get_trait(trait_code)
     if trait is None:
@@ -507,7 +639,14 @@ def create_personality_synonym(
         raise _invalid_personality_vocabulary(exc) from None
     _set_personality_refresh_response(
         response,
-        _commit_personality(repository, request),
+        _commit_personality(
+            repository,
+            request,
+            admin_session,
+            audit_repository,
+            action="personality.synonym.create",
+            resource_id=f"{trait_code}:{item.term}",
+        ),
     )
     return _personality_synonym(item)
 
@@ -523,8 +662,9 @@ def update_personality_synonym(
     request: Request,
     response: Response,
     trait_code: str,
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPersonalitySynonym:
     item = repository.get_synonym(trait_code, payload.original_term)
     if item is None:
@@ -541,7 +681,14 @@ def update_personality_synonym(
         return _personality_synonym(item)
     _set_personality_refresh_response(
         response,
-        _commit_personality(repository, request),
+        _commit_personality(
+            repository,
+            request,
+            admin_session,
+            audit_repository,
+            action="personality.synonym.update",
+            resource_id=f"{trait_code}:{item.term}",
+        ),
     )
     return _personality_synonym(item)
 
@@ -611,11 +758,22 @@ def pokemon_index_status(
 )
 def reindex_pokemon(
     pokemon_id: Annotated[int, Path(ge=1)],
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    request: Request,
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[PokemonReindexJobRepository, Depends(get_reindex_job_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminReindexJobResponse:
     try:
         job, _created = repository.enqueue(pokemon_id)
+        _record_audit(
+            audit_repository,
+            request,
+            admin_session,
+            action="pokemon.reindex.enqueue",
+            resource_type="pokemon",
+            resource_id=pokemon_id,
+            outcome="succeeded" if _created else "noop",
+        )
         repository.session.commit()
     except LookupError:
         raise HTTPException(
@@ -669,11 +827,20 @@ def reindex_job_status(
 def create_pokemon(
     payload: AdminPokemonCreate,
     request: Request,
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPokemonDetail:
     try:
         pokemon = repository.create(payload)
+        _record_audit(
+            audit_repository,
+            request,
+            admin_session,
+            action="pokemon.create",
+            resource_type="pokemon",
+            resource_id=pokemon.id,
+        )
         _commit(repository)
     except IntegrityError:
         _rollback_conflict(repository)
@@ -692,12 +859,21 @@ def update_pokemon(
     payload: AdminPokemonUpdate,
     request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPokemonDetail:
     pokemon = _get_or_404(repository, pokemon_id)
     try:
         pokemon = repository.update(pokemon, payload)
+        _record_audit(
+            audit_repository,
+            request,
+            admin_session,
+            action="pokemon.update",
+            resource_type="pokemon",
+            resource_id=pokemon.id,
+        )
         _commit(repository)
     except IntegrityError:
         _rollback_conflict(repository)
@@ -716,10 +892,19 @@ def update_pokemon(
 def deactivate_pokemon(
     request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPokemonDetail:
     pokemon = repository.set_active(_get_or_404(repository, pokemon_id), False)
+    _record_audit(
+        audit_repository,
+        request,
+        admin_session,
+        action="pokemon.deactivate",
+        resource_type="pokemon",
+        resource_id=pokemon.id,
+    )
     _commit(repository)
     _refresh_runtime_profiles(request)
     return _detail(pokemon)
@@ -729,10 +914,19 @@ def deactivate_pokemon(
 def restore_pokemon(
     request: Request,
     pokemon_id: Annotated[int, Path(ge=1)],
-    _admin_session: Annotated[AdminSession, Depends(require_csrf)],
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
     repository: Annotated[AdminPokemonRepository, Depends(get_admin_repository)],
+    audit_repository: Annotated[AdminAuditRepository, Depends(get_admin_audit_repository)],
 ) -> AdminPokemonDetail:
     pokemon = repository.set_active(_get_or_404(repository, pokemon_id), True)
+    _record_audit(
+        audit_repository,
+        request,
+        admin_session,
+        action="pokemon.restore",
+        resource_type="pokemon",
+        resource_id=pokemon.id,
+    )
     _commit(repository)
     _refresh_runtime_profiles(request)
     return _detail(pokemon)

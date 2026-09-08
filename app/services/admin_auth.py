@@ -9,6 +9,7 @@ from hashlib import sha256
 import hmac
 import json
 import os
+import re
 import secrets
 import time
 from collections.abc import Mapping
@@ -34,16 +35,51 @@ class InvalidCsrfToken(AdminAuthError):
     pass
 
 
+ADMIN_ROLES = ("viewer", "editor", "admin")
+ROLE_PERMISSIONS = {
+    "viewer": ("admin:read",),
+    "editor": ("admin:read", "admin:write"),
+    "admin": ("admin:read", "admin:write", "audit:read"),
+}
+
+
+@dataclass(frozen=True)
+class AdminAccount:
+    username: str
+    password: str
+    role: str
+
+    def __post_init__(self) -> None:
+        username = self.username.strip().casefold()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,63}", username):
+            raise ValueError("admin username must contain only letters, numbers, dot, dash or underscore")
+        if not self.password or len(self.password) > 256:
+            raise ValueError("admin password must contain between 1 and 256 characters")
+        if self.role not in ADMIN_ROLES:
+            raise ValueError(f"admin role must be one of: {', '.join(ADMIN_ROLES)}")
+        object.__setattr__(self, "username", username)
+
+
 @dataclass(frozen=True)
 class AdminSession:
     csrf_token: str
     expires_at: int
+    username: str = "admin"
+    role: str = "admin"
+
+    @property
+    def permissions(self) -> tuple[str, ...]:
+        return ROLE_PERMISSIONS.get(self.role, ())
+
+    def can(self, permission: str) -> bool:
+        return permission in self.permissions
 
 
 @dataclass(frozen=True)
 class AdminAuthConfig:
     password: str | None
     session_secret: str | None
+    accounts: tuple[AdminAccount, ...] = ()
     cookie_secure: bool = False
     session_ttl_seconds: int = 8 * 60 * 60
     cookie_name: str = "pokemon_admin_session"
@@ -60,33 +96,61 @@ class AdminAuthConfig:
             raise ValueError("ADMIN_SESSION_TTL_SECONDS must be an integer") from exc
         if not 300 <= ttl <= 7 * 24 * 60 * 60:
             raise ValueError("ADMIN_SESSION_TTL_SECONDS must be between 300 and 604800")
+        accounts_value = values.get("ADMIN_ACCOUNTS_JSON", "").strip()
+        accounts: tuple[AdminAccount, ...] = ()
+        if accounts_value:
+            try:
+                payload = json.loads(accounts_value)
+                if not isinstance(payload, list):
+                    raise TypeError("accounts must be a list")
+                accounts = tuple(
+                    AdminAccount(
+                        username=str(item["username"]),
+                        password=str(item["password"]),
+                        role=str(item["role"]),
+                    )
+                    for item in payload
+                )
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("ADMIN_ACCOUNTS_JSON must be a valid account list") from exc
         return cls(
             password=values.get("ADMIN_PASSWORD") or None,
             session_secret=values.get("ADMIN_SESSION_SECRET") or None,
+            accounts=accounts,
             cookie_secure=secure_value in {"true", "1"},
             session_ttl_seconds=ttl,
         )
 
 
 class AdminAuth:
-    """Authenticate one configured password without creating user records."""
+    """Authenticate environment-configured RBAC accounts."""
 
     def __init__(self, config: AdminAuthConfig, *, clock=time.time) -> None:
         self.config = config
         self._clock = clock
+        configured = list(config.accounts)
+        if config.password and not any(item.username == "admin" for item in configured):
+            configured.append(AdminAccount("admin", config.password, "admin"))
+        self._accounts = {item.username: item for item in configured}
+        if len(self._accounts) != len(configured):
+            raise ValueError("admin usernames must be unique")
 
     @property
     def enabled(self) -> bool:
-        return bool(self.config.password and self.config.session_secret)
+        return bool(self._accounts and self.config.session_secret)
 
-    def login(self, password: str) -> tuple[str, AdminSession]:
+    def login(self, password: str, *, username: str = "admin") -> tuple[str, AdminSession]:
         self._ensure_enabled()
-        assert self.config.password is not None
-        if not secrets.compare_digest(str(password), self.config.password):
+        normalized_username = str(username).strip().casefold()
+        account = self._accounts.get(normalized_username)
+        expected = account.password if account is not None else "\0" * 32
+        if not secrets.compare_digest(str(password), expected) or account is None:
             raise InvalidAdminCredentials("Invalid administrator credentials")
         session = AdminSession(
             csrf_token=secrets.token_urlsafe(32),
             expires_at=int(self._clock()) + self.config.session_ttl_seconds,
+            username=account.username,
+            role=account.role,
         )
         return self._encode(session), session
 
@@ -105,6 +169,8 @@ class AdminAuth:
             payload = json.loads(self._decode_part(payload_part))
             csrf_token = str(payload["csrf"])
             expires_at = int(payload["exp"])
+            username = str(payload.get("sub", "admin")).strip().casefold()
+            role = str(payload.get("role", "admin"))
         except (
             BinasciiError,
             KeyError,
@@ -114,9 +180,20 @@ class AdminAuth:
             json.JSONDecodeError,
         ):
             raise InvalidAdminSession("Invalid administrator session") from None
-        if expires_at <= int(self._clock()) or len(csrf_token) < 32:
+        account = self._accounts.get(username)
+        if (
+            expires_at <= int(self._clock())
+            or len(csrf_token) < 32
+            or account is None
+            or role != account.role
+        ):
             raise InvalidAdminSession("Invalid administrator session")
-        return AdminSession(csrf_token=csrf_token, expires_at=expires_at)
+        return AdminSession(
+            csrf_token=csrf_token,
+            expires_at=expires_at,
+            username=username,
+            role=role,
+        )
 
     @staticmethod
     def verify_csrf(session: AdminSession, token: str | None) -> None:
@@ -132,7 +209,12 @@ class AdminAuth:
 
     def _encode(self, session: AdminSession) -> str:
         payload = json.dumps(
-            {"csrf": session.csrf_token, "exp": session.expires_at},
+            {
+                "csrf": session.csrf_token,
+                "exp": session.expires_at,
+                "role": session.role,
+                "sub": session.username,
+            },
             separators=(",", ":"),
             sort_keys=True,
         ).encode("utf-8")
