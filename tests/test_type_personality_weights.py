@@ -8,6 +8,7 @@ import pandas as pd
 
 from app.services.personality_profile import (
     TYPE_PERSONALITY_WEIGHTS,
+    TYPE_PERSONALITY_WEIGHTS_VERSION,
     PokemonPersonalityProfile,
 )
 
@@ -68,12 +69,31 @@ class TypePersonalityWeightTests(unittest.TestCase):
 
     def test_dual_types_add_both_weight_profiles_before_normalization(self):
         profile = self._profile(_row(pokedex_number=3, pokemon_type="草, 毒"))
-        expected = PokemonPersonalityProfile.normalize_vec(
+        combined = (
             np.asarray(TYPE_PERSONALITY_WEIGHTS["草"], dtype=float)
             + np.asarray(TYPE_PERSONALITY_WEIGHTS["毒"], dtype=float)
         )
+        expected = PokemonPersonalityProfile.normalize_vec(
+            combined
+        )
 
         np.testing.assert_allclose(profile.persona_vectors[0], expected)
+
+        signals = profile.type_weight_signals(profile.df.iloc[0])
+        self.assertEqual(signals["version"], TYPE_PERSONALITY_WEIGHTS_VERSION)
+        self.assertEqual(
+            [(item["role"], item["type_zh"]) for item in signals["type_profiles"]],
+            [("主屬性", "草"), ("副屬性", "毒")],
+        )
+        self.assertEqual(
+            signals["type_profiles"][0]["trait_weights"]["特質0"],
+            TYPE_PERSONALITY_WEIGHTS["草"][0],
+        )
+        expected_top_index = int(np.argmax(combined))
+        self.assertEqual(
+            signals["combined_top_traits"][0]["trait"],
+            f"特質{expected_top_index}",
+        )
 
 
 if __name__ == "__main__":

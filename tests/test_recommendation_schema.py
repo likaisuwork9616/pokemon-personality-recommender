@@ -112,6 +112,17 @@ class RecommendationSchemaTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RecommendationResponse(results=invalid)
 
+        secondary_explanation = copy.deepcopy(valid)
+        secondary_explanation[1]["explanation"] = {
+            "text": "第二名不應執行或回傳額外的模型分析。",
+            "citations": [f"ev_{2:032x}"],
+            "provider": "gemini",
+            "grounded": True,
+            "used_fallback": False,
+        }
+        with self.assertRaisesRegex(ValidationError, "top-ranked"):
+            RecommendationResponse(results=secondary_explanation)
+
 
 if __name__ == "__main__":
     unittest.main()

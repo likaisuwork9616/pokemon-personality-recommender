@@ -37,13 +37,16 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
             raw_results = engine.recommend(payload.text.strip(), top_k=3)
             explanations: dict[int, dict[str, Any]] = {}
             if payload.generate_explanation:
+                top_result = raw_results[0]
                 explain_results = getattr(engine, "explain_results", None)
                 if callable(explain_results):
-                    explanations = explain_results(payload.text, raw_results)
+                    explanations = explain_results(payload.text, [top_result])
                 else:
                     explanations = {
-                        int(raw["database_id"]): engine.explain(payload.text, raw)
-                        for raw in raw_results
+                        int(top_result["database_id"]): engine.explain(
+                            payload.text,
+                            top_result,
+                        )
                     }
             return RecommendationResponse(
                 results=[
@@ -67,4 +70,10 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "invalid_recommendation_input", "message": str(exc)}) from exc
 
-router.add_api_route("/recommendations", create_recommendation, methods=["POST"], response_model=RecommendationResponse, summary="取得 Top 3 寶可夢人格推薦")
+router.add_api_route(
+    "/recommendations",
+    create_recommendation,
+    methods=["POST"],
+    response_model=RecommendationResponse,
+    summary="取得 Top 3 排名與 Top 1 契合分析",
+)

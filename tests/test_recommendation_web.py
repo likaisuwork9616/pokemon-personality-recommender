@@ -19,7 +19,7 @@ class RecommendationWebTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.context.__exit__(None, None, None)
 
-    def test_root_is_the_formal_top_three_recommendation_page(self):
+    def test_root_focuses_top_one_and_keeps_two_compact_alternatives(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
@@ -29,11 +29,15 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("<span>哪一隻寶可夢</span>", response.text)
         self.assertIn("<span>最像你？</span>", response.text)
         self.assertIn('id="recommendation-grid"', response.text)
+        self.assertIn('id="recommendation-alternatives"', response.text)
+        self.assertIn("最契合的人格夥伴", response.text)
+        self.assertIn("其他相近結果", response.text)
+        self.assertNotIn("YOUR TOP THREE", response.text)
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260908-1', response.text)
-        self.assertIn('/static/css/app.css?v=20260908-3', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260908-2', response.text)
+        self.assertIn('/static/css/app.css?v=20260908-4', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("系統採用的人格特質", response.text)
         self.assertIn('id="public-type-weight-status"', response.text)
@@ -61,10 +65,12 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertNotIn("explainToggle", source)
         self.assertNotIn("explanationPrompt", source)
         self.assertIn("payload.results.length !== 3", source)
+        self.assertIn("resultCard(payload.results[0])", source)
+        self.assertIn("payload.results.slice(1).map(alternativeResultCard)", source)
         self.assertIn("textContent", source)
         self.assertIn('"AI 契合分析"', source)
         self.assertIn('gemini: "Gemini 分析"', source)
-        self.assertIn("已融合人格訊號與", source)
+        self.assertIn("已融合人格、屬性權重與", source)
         self.assertNotIn("evidence.text", source)
         self.assertNotIn("Evidence ID", source)
         self.assertNotIn("Document ID", source)
@@ -93,7 +99,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260908-3', response.text)
+                self.assertIn('/static/css/app.css?v=20260908-4', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -147,8 +153,11 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", weighted_term_text_styles)
         self.assertIn(".public-type-weight-note", styles)
         self.assertIn(".public-type-weight-badge", styles)
+        self.assertIn(".recommendation-card.primary-result", styles)
+        self.assertIn(".recommendation-alternatives-grid", styles)
+        self.assertIn(".alternative-result-card", styles)
 
-    def test_top_three_images_remain_visible_on_narrow_screens(self):
+    def test_primary_and_alternative_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
             encoding="utf-8"
         )
@@ -162,6 +171,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("imageShell.append(image)", script)
         self.assertIn('image.referrerPolicy = "no-referrer"', script)
         self.assertIn("image.src = fallbackImageUrl", script)
+        self.assertIn('pokemonImage(pokemon, "alternative-result-image")', script)
         self.assertIn("grid-area: 1 / 1", styles)
         self.assertIn(".hero-copy h1 span", styles)
         self.assertIn("white-space: nowrap", styles)
@@ -176,7 +186,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260908-3", response.text)
+        self.assertIn("/static/css/app.css?v=20260908-4", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)

@@ -83,15 +83,18 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(first["evidence"][0]["lexical_rank"])
         self.assertEqual(self.engine.explain_calls, 0)
 
-    def test_explanation_is_opt_in(self):
+    def test_explanation_is_opt_in_and_runs_for_top_one_only(self):
         response = self.client.post(
             "/api/v1/recommendations",
             json={"text": "我重視朋友", "generate_explanation": True},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.engine.explain_calls, 3)
-        self.assertTrue(response.json()["results"][0]["explanation"]["grounded"])
+        body = response.json()
+        self.assertEqual(self.engine.explain_calls, 1)
+        self.assertTrue(body["results"][0]["explanation"]["grounded"])
+        self.assertIsNone(body["results"][1]["explanation"])
+        self.assertIsNone(body["results"][2]["explanation"])
 
     def test_validation_and_openapi(self):
         self.assertEqual(

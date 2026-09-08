@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="輸入你的個性與生活方式，取得有可追蹤證據的 Top 3 寶可夢人格推薦。">
+  <meta name="description" content="輸入你的個性與生活方式，找出最契合的寶可夢，並取得有可追蹤證據的 AI 契合分析。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260908-3">
-  <script src="/static/js/recommendation.js?v=20260908-1" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260908-4">
+  <script src="/static/js/recommendation.js?v=20260908-2" defer></script>
 </head>
 <body data-page="recommendation" data-theme="pokedex">
   <a class="skip-link" href="#recommendation-form">跳到推薦表單</a>
@@ -31,7 +31,7 @@
           <span>哪一隻寶可夢</span>
           <span>最像你？</span>
         </h1>
-        <p>描述你的個性、重視的事或面對生活的方式。系統會結合語意檢索與人格特徵，找出三個最匹配的答案。</p>
+        <p>描述你的個性、重視的事或面對生活的方式。系統會找出一位最契合的人格夥伴，並在下方保留兩個相近結果供你參考。</p>
         <div class="signal-list" aria-label="推薦方法摘要">
           <span>pgvector 語意</span>
           <span>中文全文搜尋</span>
@@ -50,7 +50,7 @@
         </div>
         <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 不寫入 PostgreSQL 或瀏覽器儲存空間；若伺服器啟用外部 AI，文字與本次證據會送往設定的服務產生契合分析。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
-          <span>找出我的 Top 3</span><span aria-hidden="true">→</span>
+          <span>找出最像我的寶可夢</span><span aria-hidden="true">→</span>
         </button>
       </form>
     </section>
@@ -91,10 +91,17 @@
 
     <section id="recommendation-results" class="recommendation-results" aria-labelledby="recommendation-results-title" tabindex="-1" hidden>
       <div class="results-header">
-        <div><p class="eyebrow">YOUR TOP THREE</p><h2 id="recommendation-results-title">你的人格夥伴</h2></div>
+        <div><p class="eyebrow">YOUR BEST MATCH</p><h2 id="recommendation-results-title">最契合的人格夥伴</h2></div>
         <p id="recommendation-algorithm" class="result-count"></p>
       </div>
       <div id="recommendation-grid" class="recommendation-grid" aria-live="polite"></div>
+      <section class="recommendation-alternatives" aria-labelledby="recommendation-alternatives-title">
+        <div class="recommendation-alternatives-heading">
+          <p class="eyebrow">ALSO MATCHED</p>
+          <h3 id="recommendation-alternatives-title">其他相近結果</h3>
+        </div>
+        <div id="recommendation-alternatives" class="recommendation-alternatives-grid" aria-live="polite"></div>
+      </section>
     </section>
   </main>
 

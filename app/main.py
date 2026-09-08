@@ -103,7 +103,7 @@ def create_app(
             application.state.readiness_error = f"{type(exc).__name__}: {exc}"[:500]
         yield
         application.state.recommendation_engine = None
-    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格與語意證據推薦 Top 3 寶可夢。", version="2.1.0", lifespan=lifespan)
+    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.1.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
 

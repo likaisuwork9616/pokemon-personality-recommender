@@ -15,7 +15,7 @@ class RecommendationRequest(BaseModel):
     )
     generate_explanation: bool = Field(
         default=False,
-        description="是否呼叫外部模型產生解釋",
+        description="是否呼叫外部模型為 Top 1 產生契合分析",
     )
 
 
@@ -127,4 +127,6 @@ class RecommendationResponse(BaseModel):
         pokemon_ids = [result.pokemon.id for result in self.results]
         if len(set(pokemon_ids)) != 3:
             raise ValueError("recommendations must contain three unique Pokémon")
+        if any(result.explanation is not None for result in self.results[1:]):
+            raise ValueError("only the top-ranked recommendation may include an explanation")
         return self
