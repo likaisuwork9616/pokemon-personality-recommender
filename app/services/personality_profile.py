@@ -33,6 +33,7 @@ TYPE_PERSONALITY_WEIGHTS: dict[str, tuple[float, ...]] = {
     "妖精": (2.6, 2.4, 1.8, 1.5, 1.0, 1.2, 2.6, 2.8, 2.5, 2.6, 2.0, 1.5, 1.4, 1.6, 1.8, 1.2),
     "一般": (1.2, 1.0, 1.0, 1.2, 1.0, 1.0, 1.0, 1.0, 1.2, 1.1, 1.3, 1.2, 1.0, 1.0, 1.0, 1.0),
 }
+TYPE_PERSONALITY_WEIGHTS_VERSION = "type-persona-v1"
 
 ENGLISH_TYPE_TO_ZH = {
     "Normal": "一般",

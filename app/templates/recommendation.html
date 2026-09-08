@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="輸入你的個性與生活方式，取得有可追蹤證據的 Top 3 寶可夢人格推薦。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260908-2">
-  <script src="/static/js/recommendation.js?v=20260907-5" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260908-3">
+  <script src="/static/js/recommendation.js?v=20260908-1" defer></script>
 </head>
 <body data-page="recommendation" data-theme="pokedex">
   <a class="skip-link" href="#recommendation-form">跳到推薦表單</a>
@@ -66,6 +66,15 @@
       <p class="public-trait-intro">系統會將描述中命中的加權詞彙累加到所屬人格特質。以下內容直接讀取目前啟用的 PostgreSQL 人格詞庫，不是可自行選擇的預設類型。</p>
       <p id="public-trait-status" class="public-trait-status" role="status" aria-live="polite">正在讀取人格特質與詞彙權重……</p>
       <div id="public-trait-grid" class="public-trait-grid" aria-live="polite" hidden></div>
+
+      <aside class="public-type-weight-note" aria-labelledby="public-type-weight-title">
+        <div>
+          <p class="eyebrow">TYPE REFERENCE WEIGHTS</p>
+          <h3 id="public-type-weight-title">系統也有屬性參考權重</h3>
+          <p>寶可夢的主屬性與副屬性會加入人格向量，和中文圖鑑內容、使用者人格訊號一起參與契合計分；屬性不會單獨決定推薦結果。</p>
+        </div>
+        <span id="public-type-weight-status" class="public-type-weight-badge" role="status" aria-live="polite">正在確認規則……</span>
+      </aside>
     </section>
 
     <section id="recommendation-loading" class="recommendation-state" role="status" hidden>

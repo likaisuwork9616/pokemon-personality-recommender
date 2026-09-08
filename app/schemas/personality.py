@@ -23,3 +23,5 @@ class PublicPersonalityCatalog(BaseModel):
 
     revision: int = Field(gt=0)
     traits: list[PublicPersonalityTrait] = Field(min_length=16, max_length=16)
+    type_weight_version: str = Field(min_length=1, max_length=40)
+    type_profile_count: int = Field(gt=0, le=18)
