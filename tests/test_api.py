@@ -106,7 +106,7 @@ class ApiTests(unittest.TestCase):
         )
         schema = self.client.get("/openapi.json").json()
         self.assertIn("/api/v1/recommendations", schema["paths"])
-        self.assertTrue(schema["paths"]["/recommend"]["post"]["deprecated"])
+        self.assertNotIn("/recommend", schema["paths"])
         evidence_schema = schema["components"]["schemas"]["EvidenceResponse"]
         self.assertTrue(
             {
