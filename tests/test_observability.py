@@ -7,6 +7,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.services.observability import RequestMetrics
 
 
 class _Engine:
@@ -16,6 +17,19 @@ class _Engine:
 
 
 class ObservabilityTests(unittest.TestCase):
+    def test_duration_histogram_exposes_cumulative_prometheus_buckets(self):
+        metrics = RequestMetrics()
+        metrics.observe("GET", "/example", 200, 0.02)
+        metrics.observe("GET", "/example", 200, 0.7)
+
+        rendered = metrics.render_prometheus()
+
+        self.assertIn("# TYPE pokemon_http_request_duration_seconds histogram", rendered)
+        self.assertIn('route="/example",le="0.01"} 0', rendered)
+        self.assertIn('route="/example",le="0.025"} 1', rendered)
+        self.assertIn('route="/example",le="0.5"} 1', rendered)
+        self.assertIn('route="/example",le="1"} 2', rendered)
+        self.assertIn('route="/example",le="+Inf"} 2', rendered)
     def test_request_id_and_prometheus_metrics_use_route_templates(self):
         with TestClient(create_app(_Engine)) as client:
             response = client.get("/api/v1/admin/pokemon/123456")

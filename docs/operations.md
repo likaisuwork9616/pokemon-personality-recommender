@@ -13,6 +13,11 @@
 | `POSTGRES_PASSWORD` | 空白、必填 | PostgreSQL 密碼；Compose 在未設定時拒絕啟動 |
 | `POSTGRES_PORT` | `5432` | PostgreSQL 對外 port |
 | `API_PORT` | `8000` | FastAPI 對外 port |
+| `PROMETHEUS_PORT` | `9090` | Prometheus 本機 UI port |
+| `PROMETHEUS_RETENTION` | `7d` | Prometheus 時序資料保留時間 |
+| `GRAFANA_PORT` | `3000` | Grafana 本機 UI port |
+| `GRAFANA_ADMIN_USER` | `admin` | Grafana 初始管理帳號 |
+| `GRAFANA_ADMIN_PASSWORD` | 空白 | Grafana 初始密碼；啟動前應自行設定 |
 | `DATABASE_URL` | 依執行環境 | Alembic、CLI 與 application 的 SQLAlchemy URL |
 | `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | query 與 chunk encoder |
 | `EMBEDDING_MODEL_VERSION` | `default` | embedding lineage 版本 |
@@ -70,7 +75,7 @@ docker compose ps -a
 啟動依賴如下：
 
 ~~~text
-db → migrate → seed → embed → api
+db → migrate → seed → embed → api → prometheus → grafana
                            └→ worker
 ~~~
 
@@ -79,6 +84,8 @@ db → migrate → seed → embed → api
 - `embed`：補齊目前 model version 尚未建立的 chunk embeddings。
 - `api`：等待 embeddings 初始化成功後才啟動。
 - `worker`：處理管理後台排入的 reindex jobs。
+- `prometheus`：每 15 秒 scrape API `/metrics`，預設保存 7 天。
+- `grafana`：自動 provision Prometheus datasource 與 overview dashboard。
 
 正常狀態下，`migrate`、`seed`、`embed` 是 `Exited (0)`；`db`、`api`、`worker` 保持運行。
 
@@ -88,6 +95,7 @@ db → migrate → seed → embed → api
 docker compose logs --tail 100 api
 docker compose logs --tail 100 worker
 docker compose logs --follow api worker
+docker compose logs --tail 100 prometheus grafana
 ~~~
 
 檢查程序與推薦引擎：
@@ -98,7 +106,17 @@ curl http://localhost:8000/health/ready
 curl http://localhost:8000/metrics
 ~~~
 
-HTTP response 會包含 `X-Request-ID`。Request log 記錄 method、route template、status 與 duration，不讀取 request body。`/metrics` 是 process-local 記憶體統計，application restart 後會歸零。
+HTTP response 會包含 `X-Request-ID`。Request log 記錄 method、route template、status 與 duration，不讀取 request body。`/metrics` 使用固定 route template labels，提供 request counter 與 cumulative duration histogram；Prometheus 可用 histogram buckets 計算 p95。應用程序重啟會造成 counter reset，但已 scrape 的時序仍保存在 `prometheus_data` volume。
+
+Prometheus UI 位於 <http://localhost:9090>；Grafana 位於 <http://localhost:3000>。啟動前請在 `.env` 設定 `GRAFANA_ADMIN_PASSWORD`。Grafana 登入後，`Pokemon Recommender/Pokémon Recommender Overview` 已包含：
+
+- API scrape health
+- route request rate
+- route p95 latency
+- HTTP 5xx ratio
+- 人格詞庫 snapshot health 與 refresh failures
+
+Prometheus scrape 設定在 `ops/prometheus/prometheus.yml`；Grafana datasource、dashboard provider 與 JSON 在 `ops/grafana/`，容器啟動時自動載入。
 
 人格詞庫異動已寫入 PostgreSQL、但目前程序無法刷新記憶體快照時，管理 API 會回傳 `202` 與 `X-Personality-Refresh-Status: pending`，`/health/ready` 同時回傳 `503`。下一次刷新成功後 readiness 會自動恢復；失敗次數與目前狀態可從 `/metrics` 查驗。
 
