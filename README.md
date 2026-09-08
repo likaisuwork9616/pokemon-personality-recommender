@@ -217,8 +217,6 @@ Alembic Migration → 匯入 1,025 筆 Seed 資料 → 建立 Embeddings → 啟
 | --- | --- |
 | 人格推薦 | <http://localhost:8000/> |
 | 寶可夢圖鑑 | <http://localhost:8000/pokemon> |
-| 管理後台 | <http://localhost:8000/admin> |
-| Swagger UI | <http://localhost:8000/docs> |
 
 停止服務：
 
@@ -338,72 +336,6 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 ├── requirements.txt
 └── requirements-aws.txt
 ```
-
----
-
-## 測試與評估
-
-執行完整測試：
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-目前共有 **186 個測試案例**：
-
-- 本機未設定可丟棄的 `TEST_DATABASE_URL`：185 通過、1 略過
-- CI 提供獨立 PostgreSQL 後：會額外執行 Importer 整合測試
-
-測試範圍涵蓋：
-
-- API Schema 與隱私
-- Hybrid Retrieval 與 RRF
-- 人格與屬性權重
-- Provider Failover
-- 圖鑑在地化
-- 管理驗證
-- Reindex 原子切換
-- Migration
-- 圖片 Manifest
-- 效能統計
-
-<details>
-<summary><strong>查看 pgvector 效能基準</strong></summary>
-
-以下為 **2026-09-07** 的單一本機開發環境快照：
-
-- 4,684 個 ready vectors
-- 50 次 Top-50 查詢
-- `ef_search=100`
-
-| 模式 | Mean | p50 | p95 | QPS |
-| --- | ---: | ---: | ---: | ---: |
-| Exact | 5.11 ms | 4.69 ms | 6.92 ms | 195.51 |
-| HNSW | 1.99 ms | 1.88 ms | 3.19 ms | 503.45 |
-
-HNSW 平均 Recall@50 為 **99.64%**，最低單次 Recall@50 為 **92%**。
-
-此結果會受到硬體、資料量與 PostgreSQL cache 影響，不代表正式環境的效能保證。
-
-</details>
-
-<details>
-<summary><strong>查看離線推薦基準</strong></summary>
-
-目前評估集只有 **5 筆人工標註**，主要用途是驗證 evaluation pipeline 與追蹤 ranking regression，不能據此推論正式推薦品質。
-
-| 指標 | 結果 |
-| --- | ---: |
-| Retrieval Recall@10 | 0.20 |
-| MRR@10 | 0.15 |
-| nDCG@10 | 0.1391 |
-| Top-3 Hit Rate | 0.20 |
-| Precision@3 | 0.0667 |
-| 平均延遲 | 287.63 ms |
-
-重跑 benchmark、設定品質門檻與使用可丟棄整合資料庫的方法，請參考 [本機操作指南](docs/operations.md)。
-
-</details>
 
 ---
 
