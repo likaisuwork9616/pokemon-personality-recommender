@@ -13,7 +13,7 @@
 ![pgvector](https://img.shields.io/badge/pgvector-HNSW%20%7C%20Exact-336791)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-[快速開始](#快速開始) · [API](#api-使用方式) · [系統架構](#系統架構) · [測試與評估](#測試與評估) · [已知限制](#已知限制與後續方向)
+[快速開始](#快速開始) · [API](#api-使用方式) · [系統架構](#系統架構) · [測試與評估](#測試與評估) · [下一階段](#現況限制與下一階段目標)
 
 </div>
 
@@ -55,39 +55,58 @@
 
 ```mermaid
 flowchart TB
-    USER[使用者個性描述] --> WEB[FastAPI + Jinja2]
-    ADMIN[管理員] --> WEB
-    WEB --> API[REST API /api/v1]
+    subgraph ACCESS["存取層"]
+        direction LR
+        USER["使用者"] --> WEB["Web UI<br/>FastAPI + Jinja2"]
+        ADMIN["管理員"] --> ADMIN_UI["管理後台<br/>RBAC"]
+        WEB --> API["REST API<br/>/api/v1"]
+        ADMIN_UI --> API
+    end
 
-    API --> ENCODER[384d Query Encoder]
-    ENCODER --> DENSE[pgvector Dense Top 50<br/>HNSW / Exact]
+    subgraph RETRIEVAL["檢索與排序"]
+        direction LR
+        ENCODER["384 維 Query Encoder"] --> DENSE["Dense Top 50<br/>pgvector HNSW / Exact"]
+        TOKENS["jieba 中文斷詞"] --> FTS["Lexical Top 50<br/>PostgreSQL FTS"]
+        DENSE --> RRF["RRF 融合<br/>k = 60"]
+        FTS --> RRF
+        RRF --> SCORE["人格與屬性加權<br/>分數融合、穩定排序"]
+        SCORE --> TOP3["Top 3<br/>排名、分數、證據"]
+    end
 
-    API --> TOKENS[jieba 中文斷詞]
-    TOKENS --> FTS[PostgreSQL FTS Top 50]
+    subgraph EXPLANATION["Top 1 說明"]
+        direction LR
+        PACKET["Evidence Packet"] --> GEMINI["Gemini"]
+        GEMINI -->|失敗| OPENAI["OpenAI"]
+        OPENAI -->|失敗| LOCAL["本地證據分析"]
+    end
 
-    DENSE --> RRF[RRF k=60]
-    FTS --> RRF
-    RRF --> SCORE[人格詞庫 + 屬性參考權重<br/>分數融合與穩定排序]
-    SCORE --> TOP3[Top 3 排名、分數與證據]
+    subgraph DATA["資料與索引"]
+        direction LR
+        DB[("PostgreSQL 16<br/>pgvector")]
+        WORKER["Reindex Worker"] --> JOBS[("Reindex Jobs")]
+        JOBS --> STAGED["Staged Documents<br/>Chunks / Embeddings"]
+        STAGED -->|原子切換| DB
+    end
 
-    TOP3 --> TOP1[Top 1 Evidence Packet]
-    TOP1 --> GEMINI[Gemini]
-    GEMINI -->|失敗| OPENAI[OpenAI]
-    OPENAI -->|失敗| LOCAL[本地證據分析]
+    subgraph OPS["交付與可觀測性"]
+        direction LR
+        CDN["CloudFront Artwork"]
+        READY["/health/ready<br/>bounded SELECT 1"]
+        METRICS["/metrics<br/>Histogram + Counters"] --> PROM["Prometheus"]
+        PROM --> GRAFANA["Grafana Dashboard"]
+    end
 
-    API <--> DB[(PostgreSQL 16 + pgvector)]
-
-    WORKER[Reindex Worker] --> JOBS[(Reindex Jobs)]
-    JOBS --> STAGED[Staged Documents / Chunks / Embeddings]
-    STAGED -->|全部成功後原子切換| DB
-
-    WEB --> CDN[CloudFront Artwork]
-    WEB --> METRICS[/metrics Histogram + Counters]
-    METRICS --> PROM[Prometheus]
-    PROM --> GRAFANA[Grafana Dashboard]
+    API --> ENCODER
+    API --> TOKENS
+    TOP3 --> PACKET
+    API <--> DB
+    API --> READY
+    READY --> DB
+    WEB --> CDN
+    API --> METRICS
 ```
 
-CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態與 embeddings 均直接由 PostgreSQL 讀取。
+CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態、Audit Log 與 embeddings 均直接由 PostgreSQL 讀取。Cross-Encoder 位於分數融合後的選配實驗路徑；因目前 CPU benchmark 未通過品質與延遲門檻，主流程預設不啟用。
 
 ---
 
@@ -325,6 +344,33 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 
 ---
 
+## 測試與評估
+
+完整測試套件：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+目前的品質驗證已整合為：
+
+- **自動化測試**：涵蓋 API contract、隱私、RBAC、Audit Log、檢索、重排、RAG fallback、Readiness 與 Prometheus／Grafana provisioning。
+- **離線相關性評估**：`evaluation/recommendation_cases.jsonl` 收錄 20 種人格情境，使用 1–3 級 relevance judgments 計算 recall、hit rate、precision 與 graded nDCG。
+- **Cross-Encoder 決策門檻**：版本化報表保存在 `evaluation/cross_encoder_benchmark.json`；目前實測未提升 graded nDCG，且增加 p95 `993.18 ms`，所以 runtime 預設關閉。
+- **向量效能基準**：`scripts/benchmark_vector_search.py` 可比較 Exact 與 HNSW 的 recall、percentile latency 與 QPS。
+- **故障演練**：真實 PostgreSQL 停機時 liveness 維持可用、readiness 回傳 `503`；資料庫恢復後 readiness 與 Prometheus gauge 會自動恢復。
+
+執行版本化離線評估：
+
+```bash
+python scripts/evaluate_recommendations.py
+python scripts/evaluate_cross_encoder.py
+```
+
+第二個指令在模型未達品質或延遲門檻時會刻意回傳非零 exit code，避免不合格模型被誤判為可部署。
+
+---
+
 ## 專案結構
 
 ```text
@@ -368,25 +414,19 @@ API 執行期不會讀取 CSV。移除或更名 CSV 不影響已初始化的資�
 
 ---
 
-## 已知限制與後續方向
+## 現況限制與下一階段目標
 
-目前限制：
+已完成的人工標註、Cross-Encoder 評估、RBAC／Audit Log、Prometheus／Grafana 與即時資料庫 Readiness，已整合至前述核心能力與測試流程。以下只保留仍存在的限制，以及可以明確驗收的下一階段工作。
 
-- 主要展示環境為本機 Docker Compose，尚未提供公開 HTTPS 部署。
-- 離線評估集已涵蓋 20 種人格情境與三級相關性，但仍需持續由不同標註者交叉覆核。
-- 管理帳號由環境變數提供；尚未加入企業 IdP／SSO 與資料庫內的帳號生命週期管理。
-- Readiness 的資料庫檢查為輕量 `SELECT 1`，不代表下游 Gemini／OpenAI provider 可用。
-- 應用程式 counter 在程序重啟時歸零；Prometheus 能辨識 counter reset，時序資料依本機預設 `7d` retention 保存在 volume。
-- 多語 Cross-Encoder 在本機 CPU／10 候選實測使 graded nDCG `0.095655 → 0.095588`，額外 p95 `993.18 ms`，未達 `+0.001 nDCG／≤250 ms` 門檻，故 runtime 預設關閉。
-
-後續優先方向：
-
-- [x] 擴充人工標註集與相關性等級（20 題；1 部分相關、2 高度相關、3 核心標註）
-- [x] 評估 Cross-Encoder：目前模型未改善排序且超過延遲預算，保留可回退的選配實作與版本化報表
-- [x] 增加 `viewer / editor / admin` 角色權限與資料庫管理操作 Audit Log
-- [x] 將 request rate、5xx、p95 latency 與人格詞庫健康 Metrics 接入 Prometheus／Grafana
-- [x] 補強 Readiness 的即時資料庫 `SELECT 1`、timeout、失敗原因與 Prometheus 指標
-- [ ] 建立公開 HTTPS 展示環境
+| 優先級 | 現況限制與目標 | 完成條件 |
+| --- | --- | --- |
+| **P0** | **公開 HTTPS 與可回退部署**：目前完整環境仍以本機 Docker Compose 為主。 | 建立公開 HTTPS 環境、secret 管理、自動 migration、部署 smoke test、資料庫備份還原演練與一鍵 rollback。 |
+| **P1** | **擴大多人標註評估**：20 題能驗證流程，但不足以代表不同語氣與族群。 | 擴充至至少 100 題、兩位以上標註者，回報標註一致性與 personality／query-length slice metrics。 |
+| **P1** | **正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
+| **P1** | **帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
+| **P2** | **Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
+| **P2** | **下一輪排序品質實驗**：現有多語 Cross-Encoder 未通過 `+0.001 nDCG／≤250 ms` 門檻。 | 以輕量模型、特徵權重或 query expansion 進行離線 A/B；只有同時通過品質與延遲門檻才進入 runtime。 |
+| **P2** | **容量與恢復基準**：目前已有功能與單點故障驗證，尚未建立持續負載基準。 | 加入固定資料量的 load test、容量門檻、備份還原計時與定期故障演練。 |
 
 ---
 
