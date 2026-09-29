@@ -305,6 +305,98 @@ class EvaluationAdjudication(Base):
     )
 
 
+class RecommendationImpression(Base):
+    """Anonymous recommendation receipt without the originating query."""
+
+    __tablename__ = "recommendation_impressions"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(algorithm_version)) > 0",
+            name="algorithm_version_not_blank",
+        ),
+        Index("ix_recommendation_impressions_created", "created_at", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    algorithm_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class RecommendationImpressionItem(Base):
+    """One ranked result eligible for feedback on an anonymous receipt."""
+
+    __tablename__ = "recommendation_impression_items"
+    __table_args__ = (
+        CheckConstraint("rank BETWEEN 1 AND 3", name="rank_range"),
+        UniqueConstraint(
+            "recommendation_id",
+            "rank",
+            name="uq_recommendation_impression_items_rank",
+        ),
+    )
+
+    recommendation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("recommendation_impressions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    pokemon_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("pokemon.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class RecommendationFeedback(Base):
+    """Idempotent bounded feedback for an item from one recommendation."""
+
+    __tablename__ = "recommendation_feedback"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["recommendation_id", "pokemon_id"],
+            [
+                "recommendation_impression_items.recommendation_id",
+                "recommendation_impression_items.pokemon_id",
+            ],
+            name="fk_recommendation_feedback_impression_item",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "verdict IN ('match', 'not_match')",
+            name="verdict_valid",
+        ),
+        CheckConstraint(
+            "reason IN ('no_reason', 'personality_mismatch', 'ranking', 'unfamiliar')",
+            name="reason_valid",
+        ),
+        Index("ix_recommendation_feedback_updated", "updated_at"),
+    )
+
+    recommendation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True
+    )
+    pokemon_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="no_reason",
+        server_default=text("'no_reason'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Pokemon(Base):
     """One Pokémon species or form exposed by the catalog."""
 

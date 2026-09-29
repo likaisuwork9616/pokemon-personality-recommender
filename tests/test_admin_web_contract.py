@@ -67,6 +67,13 @@ class AdminVocabularyDraftContractTests(unittest.TestCase):
         self.assertIn('state.role === "admin"', self.script)
         self.assertIn("double_annotation_coverage", self.script)
 
+    def test_feedback_summary_is_aggregate_only(self):
+        self.assertIn('id="feedback-summary"', self.template)
+        self.assertIn('id="feedback-breakdown"', self.template)
+        self.assertIn('api("/feedback/summary")', self.script)
+        self.assertIn("summary.response_rate", self.script)
+        self.assertNotIn("feedback.query", self.script)
+
 
 if __name__ == "__main__":
     unittest.main()

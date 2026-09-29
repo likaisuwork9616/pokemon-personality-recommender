@@ -19,6 +19,8 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn('"127.0.0.1:${GRAFANA_PORT:-3000}:3000"', compose)
         self.assertNotIn('"5432:5432"', compose)
         self.assertNotIn("build:", compose)
+        self.assertIn("feedback-purge:", compose)
+        self.assertIn("${FEEDBACK_RETENTION_DAYS:-90}", compose)
 
     def test_caddy_enforces_https_headers_and_live_upstream_checks(self):
         caddyfile = (ROOT / "ops" / "caddy" / "Caddyfile").read_text(encoding="utf-8")

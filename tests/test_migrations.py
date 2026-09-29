@@ -252,6 +252,40 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn('down_revision: str | None = "20260908_0008"', revision)
         self.assertIn("evaluation_adjudications", revision)
 
+    def test_tenth_revision_adds_query_free_recommendation_feedback(self):
+        tables = Base.metadata.tables
+        impression = tables["recommendation_impressions"]
+        items = tables["recommendation_impression_items"]
+        feedback = tables["recommendation_feedback"]
+
+        stored_columns = {
+            column.name
+            for table in (impression, items, feedback)
+            for column in table.columns
+        }
+        self.assertFalse(
+            {"query", "query_text", "query_vector", "description"} & stored_columns
+        )
+        checks = " ".join(
+            str(constraint.sqltext)
+            for constraint in feedback.constraints
+            if isinstance(constraint, CheckConstraint)
+        )
+        self.assertIn("verdict IN", checks)
+        self.assertIn("reason IN", checks)
+        self.assertEqual(
+            {foreign_key.ondelete for foreign_key in feedback.foreign_key_constraints},
+            {"CASCADE"},
+        )
+        revision = (
+            ROOT
+            / "alembic"
+            / "versions"
+            / "20260929_0010_privacy_safe_recommendation_feedback.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260929_0009"', revision)
+        self.assertNotIn("query_text", revision)
+
 
 if __name__ == "__main__":
     unittest.main()

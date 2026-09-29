@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.admin import router as admin_router
 from app.api.catalog import router as catalog_router
 from app.api.evaluation_admin import router as evaluation_admin_router
+from app.api.feedback import router as feedback_router
 from app.api.personality import router as personality_router
 from app.api.v1 import router as v1_router
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
@@ -24,6 +25,7 @@ from app.services.recommendation import HybridRecommendationEngine
 from app.services.observability import RequestMetrics
 from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
 from app.services.readiness import DatabaseReadinessProbe, ReadinessConfig
+from app.services.recommendation_feedback import RecommendationFeedbackService
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -103,12 +105,28 @@ def create_app(
     admin_auth: AdminAuth | None = None,
     database_readiness_probe: Any | None = None,
     readiness_config: ReadinessConfig | None = None,
+    feedback_service: Any | None = None,
 ) -> FastAPI:
+    using_default_engine = engine_factory is None
     factory = engine_factory or _default_engine_factory
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        application.state.feedback_service = feedback_service
         try:
             application.state.recommendation_engine = factory()
+            session_factory = getattr(
+                application.state.recommendation_engine,
+                "session_factory",
+                None,
+            )
+            if (
+                feedback_service is None
+                and using_default_engine
+                and callable(session_factory)
+            ):
+                application.state.feedback_service = RecommendationFeedbackService(
+                    session_factory
+                )
             engine_probe = getattr(
                 application.state.recommendation_engine,
                 "database_readiness_probe",
@@ -127,7 +145,8 @@ def create_app(
         yield
         application.state.recommendation_engine = None
         application.state.database_readiness_probe = None
-    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.1.0", lifespan=lifespan)
+        application.state.feedback_service = None
+    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.3.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
     application.state.readiness_config = readiness_config or ReadinessConfig.from_env()
@@ -158,6 +177,7 @@ def create_app(
     application.include_router(v1_router)
     application.include_router(admin_router)
     application.include_router(evaluation_admin_router)
+    application.include_router(feedback_router)
     application.include_router(catalog_router)
     application.include_router(personality_router)
     application.include_router(web_router)

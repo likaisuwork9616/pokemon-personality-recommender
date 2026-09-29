@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="輸入你的個性與生活方式，找出最契合的寶可夢，並取得有可追蹤證據的 AI 契合分析。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260929-1">
-  <script src="/static/js/recommendation.js?v=20260908-2" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260929-3">
+  <script src="/static/js/recommendation.js?v=20260929-2" defer></script>
 </head>
 <body data-page="recommendation" data-theme="pokedex">
   <a class="skip-link" href="#recommendation-form">跳到推薦表單</a>
@@ -48,7 +48,7 @@
           <span>寫得越具體，契合分析越貼近你</span>
           <span id="character-count">0 / 2000</span>
         </div>
-        <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 不寫入 PostgreSQL 或瀏覽器儲存空間；若伺服器啟用外部 AI，文字與本次證據會送往設定的服務產生契合分析。</p>
+        <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 不寫入 PostgreSQL 或瀏覽器儲存空間；匿名回饋只綁定收據 UUID、演算法版本與當次 Top 3。若伺服器啟用外部 AI，文字與本次證據會送往設定的服務產生契合分析。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
           <span>找出最像我的寶可夢</span><span aria-hidden="true">→</span>
         </button>

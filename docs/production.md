@@ -76,3 +76,14 @@ sh scripts/production/restore_postgres.sh \
 ```
 
 Regularly copy database backups off the host and test restoration on a disposable environment. Caddy certificate state, Prometheus history and Grafana state reside in named Docker volumes; include them in the host-level backup policy when their history matters.
+
+## Feedback retention
+
+Anonymous recommendation receipts should be purged daily. The default policy keeps 90 days:
+
+```bash
+docker compose -f compose.production.yml --profile maintenance \
+  run --rm feedback-purge
+```
+
+Set `FEEDBACK_RETENTION_DAYS` to a value from 7 through 365 when a different policy is required, and keep the public privacy notice in sync with that policy.

@@ -45,6 +45,7 @@
 - **屬性參考權重**：18 種寶可夢屬性的主、副屬性權重會納入人格計分。
 - **RBAC 管理後台**：`viewer / editor / admin` 分權，支援寶可夢與人格詞庫維護、reindex、可追蹤 Audit Log。
 - **推薦品質閉環**：管理端支援多人獨立標註、衝突仲裁、雙人覆蓋率、weighted kappa、人格／query-length slice 與版本化 JSONL 匯出。
+- **隱私最小化回饋**：每張 Top 3 卡片可回報符合度與固定原因；只保存匿名收據、演算法版本與排名，不保存原始描述或 query vector。
 - **安全的索引更新**：新版 documents、chunks 與 embeddings 全部 ready 後，才原子切換 current index。
 - **多層 AI 備援**：Gemini → OpenAI → 本地證據分析；任何 LLM 失敗都不影響原始排名。
 - **可重現環境**：Alembic、Docker Compose、seed、embedding worker、CI 與測試均納入專案。
@@ -89,6 +90,7 @@ flowchart TB
         JOBS --> STAGED["Staged Documents<br/>Chunks / Embeddings"]
         STAGED -->|原子切換| DB
         LABELS[("Evaluation Labels<br/>多人標註 / 仲裁")] --> DB
+        FEEDBACK[("Anonymous Feedback<br/>Receipt / Rank / Verdict")] --> DB
     end
 
     subgraph OPS["交付與可觀測性"]
@@ -108,6 +110,7 @@ flowchart TB
     WEB --> CDN
     API --> METRICS
     ADMIN_UI --> LABELS
+    API --> FEEDBACK
 ```
 
 CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態、Audit Log、評估標註與 embeddings 均直接由 PostgreSQL 讀取。Cross-Encoder 位於分數融合後的選配實驗路徑；因目前 CPU benchmark 未通過品質與延遲門檻，主流程預設不啟用。
@@ -278,6 +281,7 @@ docker compose down
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/recommendations` | 回傳 Top 3；僅 Top 1 可包含契合分析 |
+| `POST` | `/api/v1/recommendation-feedback` | 以匿名收據回報 Top 3 單項符合度與固定原因 |
 | `GET` | `/api/v1/pokemon` | 中英文搜尋、分頁、屬性、世代與特殊分類篩選 |
 | `GET` | `/api/v1/pokemon/{pokemon_id}` | 取得單一寶可夢繁中圖鑑資料 |
 | `GET` | `/api/v1/personality/traits` | 取得公開人格特質與加權詞彙 |
@@ -299,6 +303,7 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 - `semantic`、`personality`、`total` 分數
 - 可追溯的 evidence lineage
 - Top 1 選配的繁中契合分析
+- `recommendation_id` 匿名回饋收據；保存失敗時為 `null`，不影響推薦結果
 
 完整 request／response schema 以 Swagger UI 為準。
 
@@ -311,6 +316,8 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 - Index status、reindex 排程與進度查詢
 - 人格特質與同義詞的新增、修改、加權、停用與恢復
 - 依 actor／action 篩選與分頁查閱管理 Audit Log
+- 多人相關性標註、仲裁、品質報表與版本化匯出
+- 匿名推薦回饋的回應率、Rank 與演算法版本彙總
 
 `viewer` 可讀管理資料，`editor` 可進行資料與索引異動，`admin` 再增加 Audit Log 查閱權限。所有成功寫入與 no-op reindex 都記錄 actor、角色、action、resource、request ID、route 與時間，不保存 request body。管理 session 使用簽章 HttpOnly cookie、`SameSite=Strict` 與 CSRF token；未設定任何管理帳號或 session secret 時，登入停用。
 
@@ -361,6 +368,7 @@ python -m unittest discover -s tests -v
 - **自動化測試**：涵蓋 API contract、隱私、RBAC、Audit Log、檢索、重排、RAG fallback、Readiness 與 Prometheus／Grafana provisioning。
 - **離線相關性評估**：`evaluation/recommendation_cases.jsonl` 收錄 20 種人格情境，使用 1–3 級 relevance judgments 計算 recall、hit rate、precision 與 graded nDCG。
 - **多人標註品質**：草稿案例需由至少兩位標註者獨立評分並由 admin 仲裁才能啟用；管理端回報 quadratic weighted kappa、衝突率與 slice coverage。
+- **真實回饋訊號**：公開頁面可提交 bounded feedback；後台只顯示整體、Rank 與演算法版本 aggregate，不把原始 query 納入回饋資料。
 - **Cross-Encoder 決策門檻**：版本化報表保存在 `evaluation/cross_encoder_benchmark.json`；目前實測未提升 graded nDCG，且增加 p95 `993.18 ms`，所以 runtime 預設關閉。
 - **向量效能基準**：`scripts/benchmark_vector_search.py` 可比較 Exact 與 HNSW 的 recall、percentile latency 與 QPS。
 - **故障演練**：真實 PostgreSQL 停機時 liveness 維持可用、readiness 回傳 `503`；資料庫恢復後 readiness 與 Prometheus gauge 會自動恢復。
@@ -413,6 +421,8 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 
 - 原始個性描述與 query vector 只存在 request scope。
 - 原始描述不寫入 PostgreSQL、應用程式 log 或瀏覽器儲存空間。
+- 匿名回饋只保存 recommendation UUID、演算法版本、Top 3 ID／名次與固定列舉；不保存自由文字、IP、User-Agent 或帳號識別。
+- 回饋採 `(recommendation_id, pokemon_id)` 唯一鍵覆寫，並提供預設 90 天 retention 清理工具。
 - `generate_explanation=false` 時不呼叫任何外部 LLM。
 - 啟用外部分析時，原始描述與當次 evidence packet 會送至 Gemini。
 - 若 Gemini 失敗且已設定 OpenAI key，資料也可能送至 OpenAI。
@@ -424,12 +434,13 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 
 ## 現況限制與下一階段目標
 
-已完成的人工標註、Cross-Encoder 評估、RBAC／Audit Log、Prometheus／Grafana 與即時資料庫 Readiness，已整合至前述核心能力與測試流程。以下只保留仍存在的限制，以及可以明確驗收的下一階段工作。
+已完成的人工標註、Cross-Encoder 評估、RBAC／Audit Log、Prometheus／Grafana、即時資料庫 Readiness、正式版交付骨架、多人標註工作流與匿名回饋，已整合至前述核心能力與測試流程。以下只保留仍存在的限制，以及可以明確驗收的下一階段工作。
 
 | 現況限制與目標 | 完成條件 |
 | --- | --- |
 | **P0 — 啟用公開 HTTPS 主機**：immutable GHCR release、Caddy TLS、secret injection、migration、備份、smoke test 與 image rollback 已完成。 | 準備網域與 Linux 主機、設定受保護的 GitHub `production` Environment／runner，執行首次 release 並完成異地主機 restore drill。 |
 | **P1 — 實際擴大評估樣本**：多人獨立標註、仲裁、Audit Log、weighted kappa、slice metrics 與版本化匯出已完成；目前正式資料仍只有 20 題。 | 由兩位以上真人標註者擴充至至少 100 題，完成衝突校準並發布新版 JSONL；不以合成標籤灌水。 |
+| **P1 — 累積回饋並建立實驗治理**：匿名 bounded feedback 與 aggregate 已完成，但尚無足夠真實流量，觀察值也不等於因果效果。 | 累積至少 500 份已回饋收據，按 Rank／版本檢查偏差，預先定義 A/B 指標與停止條件後再調整排序。 |
 | **P1 — 正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
 | **P1 — 帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
 | **P2 — Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
@@ -443,6 +454,7 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 - [本機操作指南](docs/operations.md)
 - [正式環境部署、備份與回退](docs/production.md)
 - [多人標註、仲裁與版本化匯出](docs/evaluation-workflow.md)
+- [隱私最小化推薦回饋與 retention](docs/recommendation-feedback.md)
 - [AWS Artwork 發送流程](docs/aws-artwork.md)
 - [Swagger API 文件](http://localhost:8000/docs)（啟動服務後開啟）
 

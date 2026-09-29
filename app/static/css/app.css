@@ -749,6 +749,23 @@ button:disabled {
   min-width: 9.5rem;
 }
 
+.feedback-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.feedback-breakdown p {
+  padding: 0.45rem 0.65rem;
+  margin: 0;
+  color: var(--muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+
 @media (max-width: 62rem) {
   .evaluation-case-form,
   .evaluation-quality {
@@ -1447,6 +1464,50 @@ button:disabled {
 .alternative-result-details strong {
   flex: 0 0 auto;
   color: var(--accent-dark);
+}
+
+.recommendation-feedback {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.feedback-question,
+.feedback-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.feedback-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.feedback-controls .button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+}
+
+.feedback-controls select {
+  min-height: 2.25rem;
+  max-width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+.feedback-positive:hover {
+  border-color: #4e8b62;
+}
+
+.feedback-negative:hover,
+.feedback-status.is-error {
+  color: var(--danger);
 }
 
 .button-quiet:hover {

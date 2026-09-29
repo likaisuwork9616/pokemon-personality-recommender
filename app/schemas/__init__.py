@@ -9,7 +9,18 @@ from .catalog import (
     CatalogType,
     PokemonDetail,
 )
-from .recommendation import EvidenceResponse, ExplanationResponse, PokemonSummary, RecommendationRequest, RecommendationResponse, RecommendationResult, ScoreBreakdown
+from .recommendation import (
+    EvidenceResponse,
+    ExplanationResponse,
+    PokemonSummary,
+    RecommendationFeedbackRequest,
+    RecommendationFeedbackResponse,
+    RecommendationFeedbackSummary,
+    RecommendationRequest,
+    RecommendationResponse,
+    RecommendationResult,
+    ScoreBreakdown,
+)
 from .personality import (
     PublicPersonalityCatalog,
     PublicPersonalityTrait,
@@ -31,6 +42,9 @@ __all__ = [
     "PublicPersonalityTrait",
     "PublicPersonalityWeightedTerm",
     "RecommendationRequest",
+    "RecommendationFeedbackRequest",
+    "RecommendationFeedbackResponse",
+    "RecommendationFeedbackSummary",
     "RecommendationResponse",
     "RecommendationResult",
     "ScoreBreakdown",

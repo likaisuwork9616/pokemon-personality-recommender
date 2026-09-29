@@ -75,6 +75,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 3)
+        self.assertIsNone(response.json()["recommendation_id"])
         self.assertEqual(response.json()["algorithm_version"], "pgvector-fts-rrf-v1")
         first = response.json()["results"][0]
         self.assertEqual(first["pokemon"]["id"], 1)
@@ -106,6 +107,8 @@ class ApiTests(unittest.TestCase):
         )
         schema = self.client.get("/openapi.json").json()
         self.assertIn("/api/v1/recommendations", schema["paths"])
+        self.assertIn("/api/v1/recommendation-feedback", schema["paths"])
+        self.assertIn("/api/v1/admin/feedback/summary", schema["paths"])
         self.assertNotIn("/recommend", schema["paths"])
         evidence_schema = schema["components"]["schemas"]["EvidenceResponse"]
         self.assertTrue(

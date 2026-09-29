@@ -5,7 +5,11 @@ import unittest
 
 from pydantic import ValidationError
 
-from app.schemas.recommendation import EvidenceResponse, RecommendationResponse
+from app.schemas.recommendation import (
+    EvidenceResponse,
+    RecommendationFeedbackRequest,
+    RecommendationResponse,
+)
 
 
 def _evidence(number: int) -> dict[str, object]:
@@ -134,6 +138,32 @@ class RecommendationSchemaTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValidationError, "top-ranked"):
             RecommendationResponse(results=secondary_explanation)
+
+    def test_feedback_contract_has_no_free_text_and_validates_reason_semantics(self):
+        valid = RecommendationFeedbackRequest(
+            recommendation_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+            pokemon_id=1,
+            rank=1,
+            verdict="not_match",
+            reason="personality_mismatch",
+        )
+        self.assertEqual(valid.reason, "personality_mismatch")
+
+        with self.assertRaises(ValidationError):
+            RecommendationFeedbackRequest(
+                recommendation_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+                pokemon_id=1,
+                rank=1,
+                verdict="match",
+                reason="ranking",
+            )
+        with self.assertRaises(ValidationError):
+            RecommendationFeedbackRequest.model_validate(
+                {
+                    **valid.model_dump(mode="json"),
+                    "comment": "free text is forbidden",
+                }
+            )
 
 
 if __name__ == "__main__":
