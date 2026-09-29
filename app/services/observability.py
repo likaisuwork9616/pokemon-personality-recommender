@@ -20,6 +20,7 @@ class RequestMetrics:
         self._database_readiness_checks = {"success": 0, "failure": 0, "timeout": 0}
         self._database_readiness_healthy: bool | None = None
         self._database_readiness_duration_seconds = 0.0
+        self._explanation_provider_events: dict[tuple[str, str], int] = defaultdict(int)
 
     def observe(self, method: str, route: str, status_code: int, duration_seconds: float) -> None:
         key = (method, route)
@@ -52,6 +53,16 @@ class RequestMetrics:
             self._database_readiness_healthy = outcome == "success"
             self._database_readiness_duration_seconds = max(0.0, duration_seconds)
 
+    def observe_explanation_provider(self, provider: str, outcome: str) -> None:
+        """Count bounded provider outcomes without prompts, tokens, or errors."""
+
+        if provider not in {"gemini", "openai", "local"}:
+            raise ValueError("invalid explanation provider")
+        if outcome not in {"attempt", "success", "failure", "fallback"}:
+            raise ValueError("invalid explanation provider outcome")
+        with self._lock:
+            self._explanation_provider_events[(provider, outcome)] += 1
+
     def render_prometheus(
         self,
         *,
@@ -67,6 +78,7 @@ class RequestMetrics:
             database_readiness_checks = dict(self._database_readiness_checks)
             database_readiness_healthy = self._database_readiness_healthy
             database_readiness_duration = self._database_readiness_duration_seconds
+            explanation_provider_events = dict(self._explanation_provider_events)
         lines = [
             "# HELP pokemon_http_requests_total HTTP requests by method, route and status.",
             "# TYPE pokemon_http_requests_total counter",
@@ -122,4 +134,13 @@ class RequestMetrics:
                 "# TYPE pokemon_readiness_database_check_duration_seconds gauge",
                 f"pokemon_readiness_database_check_duration_seconds {database_readiness_duration:.9f}",
             ])
+        lines.extend([
+            "# HELP pokemon_explanation_provider_events_total External explanation provider events by provider and outcome.",
+            "# TYPE pokemon_explanation_provider_events_total counter",
+        ])
+        for (provider, outcome), value in sorted(explanation_provider_events.items()):
+            lines.append(
+                "pokemon_explanation_provider_events_total"
+                f'{{provider="{provider}",outcome="{outcome}"}} {value}'
+            )
         return "\n".join(lines) + "\n"

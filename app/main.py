@@ -46,7 +46,7 @@ def _personality_refresh_healthy(engine: Any) -> bool:
         return False
 
 
-def _default_engine_factory() -> Any:
+def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> Any:
     import pandas as pd
 
     from app.db.session import get_session_factory
@@ -98,7 +98,13 @@ def _default_engine_factory() -> Any:
         profile_engine=profile_engine,
         session_factory=session_factory,
         embedding_model_id=active_model.id,
-        explanation_service=GroundedExplanationService.from_env(),
+        explanation_service=GroundedExplanationService.from_env(
+            observer=(
+                request_metrics.observe_explanation_provider
+                if request_metrics is not None
+                else None
+            )
+        ),
         profile_records_loader=load_profile_records,
         personality_revision=personality_revision,
         reranker=(
@@ -121,7 +127,8 @@ def create_app(
     recommendation_abuse_guard: RecommendationAbuseGuard | None = None,
 ) -> FastAPI:
     using_default_engine = engine_factory is None
-    factory = engine_factory or _default_engine_factory
+    request_metrics = RequestMetrics()
+    factory = engine_factory or (lambda: _default_engine_factory(request_metrics))
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.feedback_service = feedback_service
@@ -174,7 +181,7 @@ def create_app(
         application.state.today_pokemon_service = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、星座曆法、屬性權重與語意證據推薦寶可夢，並產生受證據約束的分析。", version="2.4.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
-    application.state.request_metrics = RequestMetrics()
+    application.state.request_metrics = request_metrics
     application.state.readiness_config = readiness_config or ReadinessConfig.from_env()
     application.state.recommendation_abuse_guard = (
         recommendation_abuse_guard
