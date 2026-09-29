@@ -30,7 +30,7 @@
 2. **LLM**只負責根據既有排名與證據整理說明，不能改寫名次或分數。
 3. 外部模型無法使用時，系統仍可透過本地 evidence-only fallback 完成推薦。
 
-目前以本機 Docker Compose 作為完整展示環境。Web 首頁聚焦 Top 1，Top 2／3 以精簡卡片供比較；REST API 固定回傳完整 Top 3 與各項分數。
+本機可用 Docker Compose 啟動完整展示環境，正式版則以 immutable GHCR image、Caddy HTTPS 與受保護的 GitHub Environment 交付。Web 首頁聚焦 Top 1，Top 2／3 以精簡卡片供比較；REST API 固定回傳完整 Top 3 與各項分數。
 
 ---
 
@@ -44,6 +44,7 @@
 - **資料庫化人格規則**：16 維人格特質、繁中／英文同義詞與權重保存在 PostgreSQL，可由管理端即時更新。
 - **屬性參考權重**：18 種寶可夢屬性的主、副屬性權重會納入人格計分。
 - **RBAC 管理後台**：`viewer / editor / admin` 分權，支援寶可夢與人格詞庫維護、reindex、可追蹤 Audit Log。
+- **推薦品質閉環**：管理端支援多人獨立標註、衝突仲裁、雙人覆蓋率、weighted kappa、人格／query-length slice 與版本化 JSONL 匯出。
 - **安全的索引更新**：新版 documents、chunks 與 embeddings 全部 ready 後，才原子切換 current index。
 - **多層 AI 備援**：Gemini → OpenAI → 本地證據分析；任何 LLM 失敗都不影響原始排名。
 - **可重現環境**：Alembic、Docker Compose、seed、embedding worker、CI 與測試均納入專案。
@@ -87,6 +88,7 @@ flowchart TB
         WORKER["Reindex Worker"] --> JOBS[("Reindex Jobs")]
         JOBS --> STAGED["Staged Documents<br/>Chunks / Embeddings"]
         STAGED -->|原子切換| DB
+        LABELS[("Evaluation Labels<br/>多人標註 / 仲裁")] --> DB
     end
 
     subgraph OPS["交付與可觀測性"]
@@ -105,9 +107,10 @@ flowchart TB
     READY --> DB
     WEB --> CDN
     API --> METRICS
+    ADMIN_UI --> LABELS
 ```
 
-CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態、Audit Log 與 embeddings 均直接由 PostgreSQL 讀取。Cross-Encoder 位於分數融合後的選配實驗路徑；因目前 CPU benchmark 未通過品質與延遲門檻，主流程預設不啟用。
+CSV 只在空資料庫初始化時作為 seed 來源。服務啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態、Audit Log、評估標註與 embeddings 均直接由 PostgreSQL 讀取。Cross-Encoder 位於分數融合後的選配實驗路徑；因目前 CPU benchmark 未通過品質與延遲門檻，主流程預設不啟用。
 
 ---
 
@@ -357,6 +360,7 @@ python -m unittest discover -s tests -v
 
 - **自動化測試**：涵蓋 API contract、隱私、RBAC、Audit Log、檢索、重排、RAG fallback、Readiness 與 Prometheus／Grafana provisioning。
 - **離線相關性評估**：`evaluation/recommendation_cases.jsonl` 收錄 20 種人格情境，使用 1–3 級 relevance judgments 計算 recall、hit rate、precision 與 graded nDCG。
+- **多人標註品質**：草稿案例需由至少兩位標註者獨立評分並由 admin 仲裁才能啟用；管理端回報 quadratic weighted kappa、衝突率與 slice coverage。
 - **Cross-Encoder 決策門檻**：版本化報表保存在 `evaluation/cross_encoder_benchmark.json`；目前實測未提升 graded nDCG，且增加 p95 `993.18 ms`，所以 runtime 預設關閉。
 - **向量效能基準**：`scripts/benchmark_vector_search.py` 可比較 Exact 與 HNSW 的 recall、percentile latency 與 QPS。
 - **故障演練**：真實 PostgreSQL 停機時 liveness 維持可用、readiness 回傳 `503`；資料庫恢復後 readiness 與 Prometheus gauge 會自動恢復。
@@ -366,6 +370,7 @@ python -m unittest discover -s tests -v
 ```bash
 python scripts/evaluate_recommendations.py
 python scripts/evaluate_cross_encoder.py
+python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output evaluation/recommendation_cases_2026.10.jsonl
 ```
 
 第二個指令在模型未達品質或延遲門檻時會刻意回傳非零 exit code，避免不合格模型被誤判為可部署。
@@ -424,7 +429,7 @@ python scripts/evaluate_cross_encoder.py
 | 現況限制與目標 | 完成條件 |
 | --- | --- |
 | **P0 — 啟用公開 HTTPS 主機**：immutable GHCR release、Caddy TLS、secret injection、migration、備份、smoke test 與 image rollback 已完成。 | 準備網域與 Linux 主機、設定受保護的 GitHub `production` Environment／runner，執行首次 release 並完成異地主機 restore drill。 |
-| **P1 — 擴大多人標註評估**：20 題能驗證流程，但不足以代表不同語氣與族群。 | 擴充至至少 100 題、兩位以上標註者，回報標註一致性與 personality／query-length slice metrics。 |
+| **P1 — 實際擴大評估樣本**：多人獨立標註、仲裁、Audit Log、weighted kappa、slice metrics 與版本化匯出已完成；目前正式資料仍只有 20 題。 | 由兩位以上真人標註者擴充至至少 100 題，完成衝突校準並發布新版 JSONL；不以合成標籤灌水。 |
 | **P1 — 正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
 | **P1 — 帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
 | **P2 — Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
@@ -437,6 +442,7 @@ python scripts/evaluate_cross_encoder.py
 
 - [本機操作指南](docs/operations.md)
 - [正式環境部署、備份與回退](docs/production.md)
+- [多人標註、仲裁與版本化匯出](docs/evaluation-workflow.md)
 - [AWS Artwork 發送流程](docs/aws-artwork.md)
 - [Swagger API 文件](http://localhost:8000/docs)（啟動服務後開啟）
 

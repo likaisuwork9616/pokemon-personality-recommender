@@ -223,6 +223,35 @@ class CoreSchemaTests(unittest.TestCase):
         self.assertIn('down_revision: str | None = "20260907_0007"', revision)
         self.assertIn("admin_audit_logs", revision)
 
+    def test_ninth_revision_adds_collaborative_evaluation_workflow(self):
+        tables = Base.metadata.tables
+        self.assertIn("evaluation_cases", tables)
+        self.assertIn("evaluation_candidates", tables)
+        self.assertIn("evaluation_annotations", tables)
+        self.assertIn("evaluation_adjudications", tables)
+
+        annotation_checks = " ".join(
+            str(constraint.sqltext)
+            for constraint in tables["evaluation_annotations"].constraints
+            if isinstance(constraint, CheckConstraint)
+        )
+        self.assertIn("grade BETWEEN 0 AND 3", annotation_checks)
+        self.assertEqual(
+            {
+                foreign_key.ondelete
+                for foreign_key in tables["evaluation_annotations"].foreign_key_constraints
+            },
+            {"CASCADE"},
+        )
+        revision = (
+            ROOT
+            / "alembic"
+            / "versions"
+            / "20260929_0009_evaluation_annotation_workflow.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('down_revision: str | None = "20260908_0008"', revision)
+        self.assertIn("evaluation_adjudications", revision)
+
 
 if __name__ == "__main__":
     unittest.main()

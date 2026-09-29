@@ -14,6 +14,7 @@ from sqlalchemy import (
     Double,
     Computed,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -164,6 +165,143 @@ class AdminAuditLog(Base):
     route: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EvaluationCaseRecord(Base):
+    """Curated query awaiting independent relevance judgments."""
+
+    __tablename__ = "evaluation_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'active', 'retired')",
+            name="status_valid",
+        ),
+        CheckConstraint("length(trim(case_key)) > 0", name="case_key_not_blank"),
+        CheckConstraint("length(trim(query_text)) > 0", name="query_text_not_blank"),
+        CheckConstraint("length(trim(segment)) > 0", name="segment_not_blank"),
+        CheckConstraint(
+            "length(trim(dataset_version)) > 0",
+            name="dataset_version_not_blank",
+        ),
+        UniqueConstraint("case_key", name="uq_evaluation_cases_case_key"),
+        Index("ix_evaluation_cases_status_version", "status", "dataset_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    case_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    segment: Mapped[str] = mapped_column(String(80), nullable=False)
+    dataset_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="draft", server_default=text("'draft'")
+    )
+    created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class EvaluationCandidate(Base):
+    """Pokémon shown to every annotator for one evaluation case."""
+
+    __tablename__ = "evaluation_candidates"
+    __table_args__ = (
+        CheckConstraint("display_order > 0", name="display_order_positive"),
+        UniqueConstraint(
+            "case_id",
+            "display_order",
+            name="uq_evaluation_candidates_case_order",
+        ),
+    )
+
+    case_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("evaluation_cases.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    pokemon_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("pokemon.id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+    display_order: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class EvaluationAnnotation(Base):
+    """One annotator's independent 0–3 relevance judgment."""
+
+    __tablename__ = "evaluation_annotations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["case_id", "pokemon_id"],
+            ["evaluation_candidates.case_id", "evaluation_candidates.pokemon_id"],
+            name="fk_evaluation_annotation_candidate",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("grade BETWEEN 0 AND 3", name="grade_range"),
+        UniqueConstraint(
+            "case_id",
+            "pokemon_id",
+            "annotator_username",
+            name="uq_evaluation_annotations_judgment",
+        ),
+        Index(
+            "ix_evaluation_annotations_annotator",
+            "annotator_username",
+            "case_id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    case_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    pokemon_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    annotator_username: Mapped[str] = mapped_column(String(64), nullable=False)
+    grade: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class EvaluationAdjudication(Base):
+    """Final relevance label approved by an administrator."""
+
+    __tablename__ = "evaluation_adjudications"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["case_id", "pokemon_id"],
+            ["evaluation_candidates.case_id", "evaluation_candidates.pokemon_id"],
+            name="fk_evaluation_adjudication_candidate",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("grade BETWEEN 0 AND 3", name="grade_range"),
+    )
+
+    case_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    pokemon_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    grade: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    adjudicator_username: Mapped[str] = mapped_column(String(64), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
