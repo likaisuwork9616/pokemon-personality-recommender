@@ -37,7 +37,7 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260929-2', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260929-3', response.text)
         self.assertIn('/static/css/app.css?v=20260929-4', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("系統採用的人格特質", response.text)
@@ -207,10 +207,10 @@ class RecommendationWebTests(unittest.TestCase):
         narrow_styles = styles.split("@media (max-width: 34rem)", maxsplit=1)[1]
 
         self.assertIn("safeImageUrl(pokemon.image_url)", script)
-        self.assertIn("officialArtworkUrl(pokemon.pokedex_number)", script)
         self.assertIn("imageShell.append(image)", script)
         self.assertIn('image.referrerPolicy = "no-referrer"', script)
-        self.assertIn("image.src = fallbackImageUrl", script)
+        self.assertIn('image.addEventListener("error", () => image.remove()', script)
+        self.assertNotIn("raw.githubusercontent.com", script)
         self.assertIn('pokemonImage(pokemon, "alternative-result-image")', script)
         self.assertIn("grid-area: 1 / 1", styles)
         self.assertIn(".hero-copy h1 span", styles)

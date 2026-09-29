@@ -31,7 +31,7 @@ class TodayPokemonWebTests(unittest.TestCase):
         self.assertIn('id="today-error"', response.text)
         self.assertIn('id="today-results"', response.text)
         self.assertIn("僅供娛樂與自我反思", response.text)
-        self.assertIn("/static/js/today_pokemon.js?v=20260929-1", response.text)
+        self.assertIn("/static/js/today_pokemon.js?v=20260929-2", response.text)
         self.assertIn("/static/css/app.css?v=20260929-4", response.text)
 
     def test_client_uses_shareable_query_without_browser_persistence_or_html_injection(self):
@@ -46,6 +46,8 @@ class TodayPokemonWebTests(unittest.TestCase):
         self.assertIn("textContent", source)
         self.assertIn("payload.selection.evidence", source)
         self.assertIn("payload.fortune.work_study", source)
+        self.assertIn('image.addEventListener("error", () => image.remove()', source)
+        self.assertNotIn("raw.githubusercontent.com", source)
         for forbidden in (
             "innerHTML",
             "outerHTML",
