@@ -1,0 +1,55 @@
+name: pokemon-quick-tunnel
+
+services:
+  api:
+    environment:
+      GEMINI_API_KEY: ""
+      OPENAI_API_KEY: ""
+      HF_TOKEN: ""
+      RECOMMENDATION_RATE_LIMIT_ENABLED: "true"
+      RECOMMENDATION_RATE_LIMIT_WINDOW_SECONDS: "60"
+      RECOMMENDATION_RATE_LIMIT_REQUESTS: "4"
+      EXPLANATION_RATE_LIMIT_WINDOW_SECONDS: "60"
+      EXPLANATION_RATE_LIMIT_REQUESTS: "2"
+      EXPLANATION_GLOBAL_RATE_LIMIT_REQUESTS: "4"
+
+  embed:
+    environment:
+      HF_TOKEN: ""
+
+  worker:
+    environment:
+      HF_TOKEN: ""
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: "http://:8080"
+      ACME_EMAIL: quick-tunnel@example.invalid
+    ports:
+      - "127.0.0.1:${TUNNEL_ORIGIN_PORT:-18080}:8080"
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - quick_tunnel_caddy_data:/data
+      - quick_tunnel_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://caddy:8080"]
+    depends_on:
+      caddy:
+        condition: service_started
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  quick_tunnel_caddy_data:
+  quick_tunnel_caddy_config:

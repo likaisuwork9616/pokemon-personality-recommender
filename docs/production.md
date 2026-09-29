@@ -67,6 +67,83 @@ Every deploy and rollback renders the final Compose JSON and runs
 service gains a host port, an operations port leaves loopback, network
 segmentation changes, or proxy trust becomes broad.
 
+## Temporary Cloudflare Quick Tunnel smoke test
+
+Use a Quick Tunnel only for a short development smoke test. Quick Tunnels have
+no uptime guarantee, stable hostname or production access controls. Stop the
+tunnel after the test and use the normal Caddy HTTPS deployment for any lasting
+environment.
+
+The checked-in overlay deliberately routes traffic as follows:
+
+```text
+public HTTPS -> cloudflared -> tracked ops/caddy/Caddyfile -> api:8000
+```
+
+Never point `cloudflared` at the API service or its loopback host port. Caddy is
+the tested boundary for the public `/metrics` denial and 16 KB request-body
+limit. The overlay also forces `GEMINI_API_KEY`, `OPENAI_API_KEY` and `HF_TOKEN`
+to empty strings, even if the invoking shell has values for them.
+
+Start an isolated stack from PowerShell 7. The explicit project name gives it
+separate networks and volumes; every published development port remains on
+loopback. The selected `cloudflared` service starts only its required database,
+initialization, API and Caddy dependencies.
+
+```powershell
+$env:POSTGRES_PASSWORD = [Convert]::ToHexString(
+  [Security.Cryptography.RandomNumberGenerator]::GetBytes(24)
+)
+$env:POSTGRES_PORT = "15432"
+$env:API_PORT = "18000"
+$env:TUNNEL_ORIGIN_PORT = "18080"
+
+$compose = @(
+  "--project-name", "pokemon-quick-tunnel",
+  "-f", "docker-compose.yml",
+  "-f", "compose.quick-tunnel.yml"
+)
+docker compose @compose config --quiet
+docker compose @compose up --build --detach cloudflared
+docker compose @compose logs --follow cloudflared
+```
+
+Copy the generated `https://...trycloudflare.com` URL from the log, then stop
+following the log with `Ctrl+C`; the containers keep running. The cloudflared
+image is pinned to `2026.9.3` and manifest digest
+`sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c`.
+
+Run the parameterized smoke test without putting credentials in the command:
+
+```powershell
+pwsh -File scripts/production/quick_tunnel_smoke.ps1 `
+  -BaseUrl "https://replace-me.trycloudflare.com"
+```
+
+The script verifies liveness and readiness, the root page and its noncommercial
+rights disclaimer, public `/metrics` returning `404`, an oversized request
+returning `413`, a Top 3 recommendation using the grounded `local` fallback,
+the Top 1 HTTPS image, and a `429` that cannot be bypassed by rotating spoofed
+forwarded-address headers. The overlay lowers the isolated stack's
+recommendation limit to four requests per minute so this final check is quick.
+Restart the isolated API or wait one minute before repeating the whole script.
+
+Inspect the resolved edge path at any time:
+
+```powershell
+docker compose @compose ps
+docker compose @compose config
+```
+
+Tear down safely without `--volumes` or `-v`:
+
+```powershell
+docker compose @compose down --remove-orphans
+```
+
+This stops and removes the temporary containers and network but preserves the
+project's database, model and Caddy named volumes for a reproducible rerun.
+
 ## Backup, rollback and restore
 
 Create an on-demand PostgreSQL custom-format backup:

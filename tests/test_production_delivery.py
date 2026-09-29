@@ -62,6 +62,28 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn("respond @private_metrics 404", caddyfile)
         self.assertIn("max_size 16KB", caddyfile)
 
+    def test_quick_tunnel_keeps_secrets_empty_and_routes_through_caddy(self):
+        compose = (ROOT / "compose.quick-tunnel.yml").read_text(encoding="utf-8")
+        smoke = (
+            ROOT / "scripts" / "production" / "quick_tunnel_smoke.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('GEMINI_API_KEY: ""', compose)
+        self.assertIn('OPENAI_API_KEY: ""', compose)
+        self.assertIn('HF_TOKEN: ""', compose)
+        self.assertIn("./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro", compose)
+        self.assertIn('"http://caddy:8080"', compose)
+        self.assertNotIn('"http://api:8000"', compose)
+        self.assertIn('"127.0.0.1:${TUNNEL_ORIGIN_PORT:-18080}:8080"', compose)
+        self.assertIn("cloudflare/cloudflared:2026.9.3@sha256:", compose)
+        self.assertIn(".trycloudflare.com", smoke)
+        self.assertIn('Path "/metrics"', smoke)
+        self.assertIn('"X-Forwarded-For"', smoke)
+        self.assertIn('"X-Real-IP"', smoke)
+        self.assertNotIn('"CF-Connecting-IP"', smoke)
+        self.assertIn('provider -ne "local"', smoke)
+        self.assertIn("used_fallback", smoke)
+
     def test_proxy_trust_and_service_networks_are_narrow(self):
         compose = (ROOT / "compose.production.yml").read_text(encoding="utf-8")
 
