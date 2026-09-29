@@ -288,6 +288,7 @@ docker compose down
 | Method | Path | 說明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/recommendations` | 回傳 Top 3；僅 Top 1 可包含契合分析 |
+| `GET` | `/api/v1/today-pokemon?zodiac=leo` | 依台北國農曆、時辰與星座取得今日代表寶可夢及娛樂運勢 |
 | `POST` | `/api/v1/recommendation-feedback` | 以匿名收據回報 Top 3 單項符合度與固定原因 |
 | `GET` | `/api/v1/pokemon` | 中英文搜尋、分頁、屬性、世代與特殊分類篩選 |
 | `GET` | `/api/v1/pokemon/{pokemon_id}` | 取得單一寶可夢繁中圖鑑資料 |
@@ -313,6 +314,14 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 - `recommendation_id` 匿名回饋收據；保存失敗時為 `null`，不影響推薦結果
 
 完整 request／response schema 以 Swagger UI 為準。
+
+### 今日寶可夢範例
+
+```bash
+curl "http://localhost:8000/api/v1/today-pokemon?zodiac=leo"
+```
+
+`zodiac` 接受 `aries`、`taurus`、`gemini`、`cancer`、`leo`、`virgo`、`libra`、`scorpio`、`sagittarius`、`capricorn`、`aquarius`、`pisces`。回應會標示台北時區的有效期限、國農曆與時辰訊號、固定選角依據、四面向娛樂運勢，以及只能引用該寶可夢 evidence 的繁中說明。
 
 ### 管理 API
 

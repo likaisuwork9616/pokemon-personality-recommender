@@ -42,6 +42,7 @@ class HybridRecommendationEngine:
         personality_revision: int | None = None,
         reranker: CrossEncoderReranker | None = None,
         database_readiness_probe: Any | None = None,
+        personality_trait_codes: tuple[str, ...] | None = None,
     ) -> None:
         self.profile_engine = profile_engine
         self.session_factory = session_factory
@@ -63,6 +64,7 @@ class HybridRecommendationEngine:
         self._personality_refresh_error: str | None = None
         self.reranker = reranker
         self.database_readiness_probe = database_readiness_probe
+        self.personality_trait_codes = personality_trait_codes
 
         database_ids = self._database_id_map(profile_engine)
         self._profile_state = (profile_engine, database_ids)

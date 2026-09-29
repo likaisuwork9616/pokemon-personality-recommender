@@ -26,6 +26,8 @@ from app.services.observability import RequestMetrics
 from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
 from app.services.readiness import DatabaseReadinessProbe, ReadinessConfig
 from app.services.recommendation_feedback import RecommendationFeedbackService
+from app.services.today_pokemon import TodayPokemonService
+from app.today_pokemon_rules import TRAIT_LABELS
 from app.web.routes import router as web_router
 
 EngineFactory = Callable[[], Any]
@@ -59,8 +61,12 @@ def _default_engine_factory() -> Any:
 
     records = load_profile_records()
     with session_factory() as session:
-        personality_catalog = PersonalityRepository(session).catalog()
-        personality_revision = PersonalityRepository(session).revision()
+        personality_repository = PersonalityRepository(session)
+        personality_catalog = personality_repository.catalog()
+        personality_revision = personality_repository.revision()
+        personality_trait_codes = tuple(
+            trait.code for trait in personality_repository.public_catalog().traits
+        )
         vector_repository = VectorRepository(session)
         active_model = vector_repository.active_model()
         ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
@@ -97,6 +103,7 @@ def _default_engine_factory() -> Any:
             else None
         ),
         database_readiness_probe=DatabaseReadinessProbe(session_factory),
+        personality_trait_codes=personality_trait_codes,
     )
 
 def create_app(
@@ -106,14 +113,26 @@ def create_app(
     database_readiness_probe: Any | None = None,
     readiness_config: ReadinessConfig | None = None,
     feedback_service: Any | None = None,
+    today_pokemon_service: Any | None = None,
 ) -> FastAPI:
     using_default_engine = engine_factory is None
     factory = engine_factory or _default_engine_factory
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.feedback_service = feedback_service
+        application.state.today_pokemon_service = today_pokemon_service
         try:
             application.state.recommendation_engine = factory()
+            if application.state.today_pokemon_service is None:
+                active_trait_codes = getattr(
+                    application.state.recommendation_engine,
+                    "personality_trait_codes",
+                    None,
+                ) or tuple(TRAIT_LABELS)
+                application.state.today_pokemon_service = TodayPokemonService(
+                    application.state.recommendation_engine,
+                    active_trait_codes=active_trait_codes,
+                )
             session_factory = getattr(
                 application.state.recommendation_engine,
                 "session_factory",
@@ -140,13 +159,15 @@ def create_app(
             application.state.readiness_error = None
         except Exception as exc:
             application.state.recommendation_engine = None
+            application.state.today_pokemon_service = None
             application.state.database_readiness_probe = database_readiness_probe
             application.state.readiness_error = f"{type(exc).__name__}: {exc}"[:500]
         yield
         application.state.recommendation_engine = None
         application.state.database_readiness_probe = None
         application.state.feedback_service = None
-    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、屬性權重與語意證據推薦寶可夢，並為 Top 1 產生契合分析。", version="2.3.0", lifespan=lifespan)
+        application.state.today_pokemon_service = None
+    application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、星座曆法、屬性權重與語意證據推薦寶可夢，並產生受證據約束的分析。", version="2.4.0", lifespan=lifespan)
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
     application.state.readiness_config = readiness_config or ReadinessConfig.from_env()
