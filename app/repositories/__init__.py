@@ -2,6 +2,7 @@
 
 from app.repositories.admin import AdminPokemonRepository
 from app.repositories.admin_audit import AdminAuditRepository
+from app.repositories.evaluation_admin import EvaluationAnnotationRepository
 from app.repositories.pokemon import PokemonRepository
 from app.repositories.personality import PersonalityCatalog, PersonalityRepository
 from app.repositories.retrieval import LexicalSearchHit, RetrievalRepository
@@ -19,6 +20,7 @@ from app.repositories.vector import (
 __all__ = [
     "AdminPokemonRepository",
     "AdminAuditRepository",
+    "EvaluationAnnotationRepository",
     "EmbeddingCandidate",
     "LexicalSearchHit",
     "IndexSourceState",

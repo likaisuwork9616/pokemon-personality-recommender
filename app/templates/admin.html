@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="管理寶可夢圖鑑資料、啟用狀態與檢索來源。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260908-5">
-  <script src="/static/js/admin.js" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260929-1">
+  <script src="/static/js/admin.js?v=20260929-1" defer></script>
 </head>
 <body data-page="admin" data-theme="pokedex">
   <a class="skip-link" href="#admin-main">跳到管理內容</a>
@@ -131,6 +131,32 @@
             <tbody id="vocabulary-synonyms"></tbody>
           </table>
         </div>
+      </section>
+
+      <section class="card evaluation-panel" aria-labelledby="evaluation-title">
+        <div class="panel-heading evaluation-heading">
+          <div>
+            <p class="eyebrow">RELEVANCE QUALITY</p>
+            <h2 id="evaluation-title">多人標註與仲裁</h2>
+            <p class="muted">兩位 editor 獨立評分後，由 admin 仲裁並發布至版本化離線資料集。</p>
+          </div>
+          <div class="editor-actions">
+            <button id="evaluation-refresh" class="button button-ghost" type="button">更新品質報表</button>
+            <a class="button button-ghost" href="/api/v1/admin/evaluation/export" target="_blank" rel="noopener">查看正式標籤</a>
+          </div>
+        </div>
+
+        <form id="evaluation-case-form" class="evaluation-case-form">
+          <label class="field"><span>案例代碼</span><input id="evaluation-case-key" maxlength="80" pattern="[A-Za-z0-9][A-Za-z0-9_-]*" required></label>
+          <label class="field"><span>資料集版本</span><input id="evaluation-version" placeholder="2026.10" maxlength="40" required></label>
+          <label class="field"><span>人格切片</span><input id="evaluation-segment" value="general" maxlength="80" required></label>
+          <label class="field"><span>候選 Pokémon DB ID（逗號分隔）</span><input id="evaluation-pokemon-ids" placeholder="25,39,94" required></label>
+          <label class="field evaluation-wide"><span>人工整理的測試描述</span><textarea id="evaluation-query" rows="3" maxlength="2000" required></textarea></label>
+          <button class="button button-primary" type="submit">建立標註草稿</button>
+        </form>
+
+        <div id="evaluation-quality" class="evaluation-quality" aria-live="polite"></div>
+        <div id="evaluation-cases" class="evaluation-cases"></div>
       </section>
     </section>
   </main>

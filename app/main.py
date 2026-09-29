@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
 from app.api.catalog import router as catalog_router
+from app.api.evaluation_admin import router as evaluation_admin_router
 from app.api.personality import router as personality_router
 from app.api.v1 import router as v1_router
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
@@ -156,6 +157,7 @@ def create_app(
             }, separators=(",", ":")))
     application.include_router(v1_router)
     application.include_router(admin_router)
+    application.include_router(evaluation_admin_router)
     application.include_router(catalog_router)
     application.include_router(personality_router)
     application.include_router(web_router)

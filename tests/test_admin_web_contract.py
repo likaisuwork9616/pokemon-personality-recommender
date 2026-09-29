@@ -58,6 +58,15 @@ class AdminVocabularyDraftContractTests(unittest.TestCase):
         self.assertIn('min="0.01" max="5" step="0.01"', self.template)
         self.assertIn("權重（大於 0，最高 5）", self.template)
 
+    def test_collaborative_evaluation_ui_exposes_annotation_and_adjudication(self):
+        self.assertIn('id="evaluation-case-form"', self.template)
+        self.assertIn('id="evaluation-quality"', self.template)
+        self.assertIn('id="evaluation-cases"', self.template)
+        self.assertIn('/evaluation/cases/${caseId}/${kind}', self.script)
+        self.assertIn('kind === "annotations"', self.script)
+        self.assertIn('state.role === "admin"', self.script)
+        self.assertIn("double_annotation_coverage", self.script)
+
 
 if __name__ == "__main__":
     unittest.main()

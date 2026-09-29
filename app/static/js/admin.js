@@ -3,6 +3,7 @@
 
   const state = {
     csrf: "",
+    username: "",
     role: "",
     canWrite: false,
     page: 1,
@@ -41,6 +42,7 @@
 
   const showDashboard = (session) => {
     state.csrf = session.csrf_token;
+    state.username = session.username;
     state.role = session.role;
     state.canWrite = session.permissions.includes("admin:write");
     loginPanel.hidden = true;
@@ -59,12 +61,17 @@
     Array.from(byId("vocabulary-synonym-form").elements).forEach((control) => {
       control.disabled = !state.canWrite;
     });
+    Array.from(byId("evaluation-case-form").elements).forEach((control) => {
+      control.disabled = !state.canWrite;
+    });
     loadList();
     loadVocabulary();
+    loadEvaluation();
   };
 
   const showLogin = () => {
     state.csrf = "";
+    state.username = "";
     state.role = "";
     state.canWrite = false;
     state.selected = null;
@@ -539,6 +546,179 @@
     }
   };
 
+  const gradeSelect = (className, pokemonId, selectedGrade, disabled = false) => {
+    const select = document.createElement("select");
+    select.className = className;
+    select.dataset.pokemonId = String(pokemonId);
+    select.disabled = disabled;
+    [
+      ["", "尚未評分"],
+      ["0", "0 · 不相關"],
+      ["1", "1 · 部分相關"],
+      ["2", "2 · 高度相關"],
+      ["3", "3 · 核心標註"],
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      option.selected = selectedGrade !== null && String(selectedGrade) === value;
+      select.append(option);
+    });
+    return select;
+  };
+
+  const collectJudgments = (container, selector) => Array.from(container.querySelectorAll(selector))
+    .filter((control) => control.value !== "")
+    .map((control) => ({
+      pokemon_id: Number(control.dataset.pokemonId),
+      grade: Number(control.value),
+    }));
+
+  const saveEvaluationJudgments = async (caseId, container, kind) => {
+    const selector = kind === "annotations"
+      ? ".evaluation-annotation-grade"
+      : ".evaluation-adjudication-grade";
+    const judgments = collectJudgments(container, selector);
+    if (!judgments.length) {
+      setStatus("請至少選擇一筆相關性評分。", true);
+      return;
+    }
+    try {
+      await api(`/evaluation/cases/${caseId}/${kind}`, {
+        method: "PUT",
+        body: JSON.stringify({ judgments }),
+      });
+      setStatus(kind === "annotations" ? "個人標註已儲存。" : "最終仲裁已儲存。");
+      await loadEvaluation();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  };
+
+  const evaluationCaseCard = (item) => {
+    const article = document.createElement("article");
+    article.className = "evaluation-case";
+    const heading = document.createElement("div");
+    heading.className = "evaluation-case-heading";
+    const title = document.createElement("div");
+    const name = document.createElement("h3");
+    const summary = document.createElement("p");
+    const badge = document.createElement("span");
+    name.textContent = item.case_key;
+    summary.className = "muted";
+    summary.textContent = `${item.dataset_version} · ${item.segment} · ${item.query}`;
+    badge.className = `status-badge status-${item.status === "active" ? "active" : "inactive"}`;
+    badge.textContent = item.status;
+    title.append(name, summary);
+    heading.append(title, badge);
+
+    const candidateList = document.createElement("div");
+    candidateList.className = "evaluation-candidate-list";
+    item.candidates.forEach((candidate) => {
+      const row = document.createElement("div");
+      row.className = "evaluation-candidate";
+      const label = document.createElement("strong");
+      const mine = candidate.annotations.find((entry) => entry.annotator === state.username);
+      const consensus = document.createElement("small");
+      label.textContent = `#${String(candidate.pokedex_number).padStart(4, "0")} ${candidate.name_zh}`;
+      consensus.textContent = candidate.annotations.length
+        ? candidate.annotations.map((entry) => `${entry.annotator}: ${entry.grade}`).join(" · ")
+        : "尚無標註";
+      const annotation = gradeSelect(
+        "evaluation-annotation-grade",
+        candidate.pokemon_id,
+        mine ? mine.grade : null,
+        !state.canWrite,
+      );
+      annotation.setAttribute("aria-label", `${candidate.name_zh} 的個人標註`);
+      const adjudication = gradeSelect(
+        "evaluation-adjudication-grade",
+        candidate.pokemon_id,
+        candidate.adjudication ? candidate.adjudication.grade : null,
+        state.role !== "admin",
+      );
+      adjudication.setAttribute("aria-label", `${candidate.name_zh} 的最終仲裁`);
+      const identity = document.createElement("span");
+      identity.append(label, consensus);
+      row.append(identity, annotation, adjudication);
+      candidateList.append(row);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "editor-actions";
+    if (state.canWrite) {
+      const saveMine = document.createElement("button");
+      saveMine.type = "button";
+      saveMine.className = "button button-ghost";
+      saveMine.textContent = "儲存我的標註";
+      saveMine.addEventListener("click", () => saveEvaluationJudgments(item.id, article, "annotations"));
+      actions.append(saveMine);
+    }
+    if (state.role === "admin") {
+      const saveFinal = document.createElement("button");
+      saveFinal.type = "button";
+      saveFinal.className = "button button-ghost";
+      saveFinal.textContent = "儲存仲裁";
+      saveFinal.addEventListener("click", () => saveEvaluationJudgments(item.id, article, "adjudications"));
+      actions.append(saveFinal);
+      if (item.status !== "active") {
+        const activate = document.createElement("button");
+        activate.type = "button";
+        activate.className = "button button-primary";
+        activate.textContent = "發布至正式資料集";
+        activate.addEventListener("click", async () => {
+          try {
+            await api(`/evaluation/cases/${item.id}/status`, {
+              method: "PATCH",
+              body: JSON.stringify({ status: "active" }),
+            });
+            setStatus("評估案例已發布。 ");
+            await loadEvaluation();
+          } catch (error) {
+            setStatus(error.message, true);
+          }
+        });
+        actions.append(activate);
+      }
+    }
+    article.append(heading, candidateList, actions);
+    return article;
+  };
+
+  const renderEvaluationQuality = (report) => {
+    const overall = report.overall;
+    const values = [
+      ["案例", overall.case_count],
+      ["雙人覆蓋", `${Math.round(overall.double_annotation_coverage * 100)}%`],
+      ["衝突率", `${Math.round(overall.conflict_rate * 100)}%`],
+      ["平均 QWK", overall.mean_quadratic_weighted_kappa ?? "尚無"],
+    ];
+    byId("evaluation-quality").replaceChildren(...values.map(([label, value]) => {
+      const item = document.createElement("div");
+      const term = document.createElement("small");
+      const result = document.createElement("strong");
+      term.textContent = label;
+      result.textContent = String(value);
+      item.append(term, result);
+      return item;
+    }));
+  };
+
+  async function loadEvaluation() {
+    try {
+      const [page, quality] = await Promise.all([
+        api("/evaluation/cases?page_size=50"),
+        api("/evaluation/quality"),
+      ]);
+      renderEvaluationQuality(quality);
+      const container = byId("evaluation-cases");
+      container.replaceChildren(...page.items.map(evaluationCaseCard));
+      if (!page.items.length) container.textContent = "尚未建立多人標註案例。";
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
   byId("admin-login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -649,6 +829,37 @@
       controls.forEach((control) => { control.disabled = false; });
     }
   });
+
+  byId("evaluation-case-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const pokemonIds = byId("evaluation-pokemon-ids").value
+      .split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isInteger(value) && value > 0);
+    if (pokemonIds.length < 2 || new Set(pokemonIds).size !== pokemonIds.length) {
+      setStatus("候選 Pokémon DB ID 至少需要兩筆且不可重複。", true);
+      return;
+    }
+    try {
+      await api("/evaluation/cases", {
+        method: "POST",
+        body: JSON.stringify({
+          case_key: byId("evaluation-case-key").value.trim(),
+          query: byId("evaluation-query").value.trim(),
+          segment: byId("evaluation-segment").value.trim(),
+          dataset_version: byId("evaluation-version").value.trim(),
+          pokemon_ids: pokemonIds,
+        }),
+      });
+      event.currentTarget.reset();
+      byId("evaluation-segment").value = "general";
+      setStatus("多人標註草稿已建立。 ");
+      await loadEvaluation();
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  });
+  byId("evaluation-refresh").addEventListener("click", loadEvaluation);
 
   byId("admin-reindex").addEventListener("click", async () => {
     if (!state.selected) return;
