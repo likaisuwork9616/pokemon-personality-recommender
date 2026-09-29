@@ -1,5 +1,7 @@
 # 本機操作指南
 
+[文件索引](README.md) · [返回專案首頁](../README.md)
+
 這份文件集中整理環境變數、Docker 生命週期、PostgreSQL 查驗、reindex worker、測試與量測方式。第一次使用請先看 [README 的快速開始](../README.md#快速開始)。
 
 ## 環境變數

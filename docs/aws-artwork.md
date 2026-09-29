@@ -1,8 +1,8 @@
 # AWS artwork 發送流程
 
-這套工具將本機整理好的官方 artwork 驗證後上傳至 Amazon S3，再透過 CloudFront 提供公開 URL。圖片二進位不寫入 PostgreSQL；application 只保存 URL。
+[文件索引](README.md) · [返回專案首頁](../README.md)
 
-[返回 README](../README.md)
+這套工具將本機整理好的官方 artwork 驗證後上傳至 Amazon S3，再透過 CloudFront 提供公開 URL。圖片二進位不寫入 PostgreSQL；application 只保存 URL。
 
 ## 資料流
 
