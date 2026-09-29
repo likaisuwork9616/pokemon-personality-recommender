@@ -19,7 +19,7 @@
 | `PROMETHEUS_RETENTION` | `7d` | Prometheus 時序資料保留時間 |
 | `GRAFANA_PORT` | `3000` | Grafana 本機 UI port |
 | `GRAFANA_ADMIN_USER` | `admin` | Grafana 初始管理帳號 |
-| `GRAFANA_ADMIN_PASSWORD` | 空白 | Grafana 初始密碼；啟動前應自行設定 |
+| `GRAFANA_ADMIN_PASSWORD` | `change-me-before-use`（空白時 fallback） | 僅供本機暫時啟動；啟動前應自行設定，production 不接受空值 |
 | `ALERTMANAGER_PORT` | `9093` | Alertmanager 本機 UI port |
 | `DATABASE_URL` | 依執行環境 | Alembic、CLI 與 application 的 SQLAlchemy URL |
 | `READINESS_DB_TIMEOUT_SECONDS` | `2` | 每次 readiness 即時 DB round-trip timeout，範圍 0.05–10 秒 |
