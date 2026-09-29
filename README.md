@@ -466,9 +466,9 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 | **P0 — 啟用公開 HTTPS 主機**：immutable GHCR release、Caddy TLS、secret injection、migration、備份、smoke test 與 image rollback 已完成。 | 準備網域與 Linux 主機、設定受保護的 GitHub `production` Environment／runner，執行首次 release 並完成異地主機 restore drill。 |
 | **P1 — 實際擴大評估樣本**：多人獨立標註、仲裁、Audit Log、weighted kappa、slice metrics 與版本化匯出已完成；目前正式資料仍只有 20 題。 | 由兩位以上真人標註者擴充至至少 100 題，完成衝突校準並發布新版 JSONL；不以合成標籤灌水。 |
 | **P1 — 累積回饋並建立實驗治理**：匿名 bounded feedback 與 aggregate 已完成，但尚無足夠真實流量，觀察值也不等於因果效果。 | 累積至少 500 份已回饋收據，按 Rank／版本檢查偏差，預先定義 A/B 指標與停止條件後再調整排序。 |
-| **P1 — 正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
+| **P1 — 正式 SLO 與告警**：availability、p95、5xx、readiness、429 與 provider 異常規則及 Alertmanager 路徑已建立。 | 在正式主機設定私密通知接收端，依實際流量校準門檻，再補長期 retention 與 dashboard runbook 連結。 |
 | **P1 — 帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
-| **P2 — Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
+| **P2 — Provider 韌性與成本觀測**：Gemini／OpenAI attempt、failure、fallback 指標與告警已完成，本地 fallback 不阻斷核心推薦 readiness。 | 補 token／實際金額指標、circuit breaker，並以正式帳務報表校準費用門檻。 |
 | **P2 — 下一輪排序品質實驗**：現有多語 Cross-Encoder 未通過 `+0.001 nDCG／≤250 ms` 門檻。 | 以輕量模型、特徵權重或 query expansion 進行離線 A/B；只有同時通過品質與延遲門檻才進入 runtime。 |
 | **P2 — 容量與恢復基準**：目前已有功能與單點故障驗證，尚未建立持續負載基準。 | 加入固定資料量的 load test、容量門檻、備份還原計時與定期故障演練。 |
 | **P2 — 今日寶可夢規則評估**：v1 已具備固定選角、圖鑑依據與四面向娛樂運勢，但尚無獨立滿意度資料。 | 加入不保存生日的 bounded feedback，累積至少 500 筆後按星座／時辰切片評估規則與停止條件。 |
@@ -483,6 +483,7 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 - [多人標註、仲裁與版本化匯出](docs/evaluation-workflow.md)
 - [隱私最小化推薦回饋與 retention](docs/recommendation-feedback.md)
 - [AWS Artwork 發送流程](docs/aws-artwork.md)
+- [費用護欄與主動告警](docs/cost-controls.md)
 - [Swagger API 文件](http://localhost:8000/docs)（啟動服務後開啟）
 
 ---

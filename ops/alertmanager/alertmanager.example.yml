@@ -1,0 +1,15 @@
+route:
+  receiver: operator-webhook
+  group_by:
+    - alertname
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# Copy this file outside the repository, replace the URL with an operator-owned
+# secret webhook, chmod it 0600, and point ALERTMANAGER_CONFIG_FILE at the copy.
+receivers:
+  - name: operator-webhook
+    webhook_configs:
+      - url: https://replace-me.invalid/secret-alert-webhook
+        send_resolved: true

@@ -1,0 +1,76 @@
+groups:
+  - name: pokemon-api
+    rules:
+      - alert: PokemonApiDown
+        expr: up{job="pokemon-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Pokémon API is not reachable by Prometheus
+
+      - alert: PokemonDatabaseReadinessFailed
+        expr: pokemon_readiness_database_healthy == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The latest live PostgreSQL readiness probe failed
+
+      - alert: PokemonHigh5xxRatio
+        expr: >-
+          sum(rate(pokemon_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(pokemon_http_requests_total[5m])), 0.001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5% of Pokémon API requests are returning 5xx
+
+      - alert: PokemonHighP95Latency
+        expr: >-
+          histogram_quantile(0.95,
+            sum by (le) (rate(pokemon_http_request_duration_seconds_bucket[5m])))
+          > 2.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Pokémon API p95 latency is above 2.5 seconds
+
+      - alert: PokemonPublicRateLimitSpike
+        expr: >-
+          sum(increase(pokemon_http_requests_total{status="429"}[10m])) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Public API rate limiting indicates possible abuse
+
+      - alert: PokemonExplanationProviderFailures
+        expr: >-
+          sum(increase(pokemon_explanation_provider_events_total{outcome="failure"}[10m])) > 2
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: External explanation providers are repeatedly failing
+
+      - alert: PokemonExplanationTrafficSpike
+        expr: >-
+          sum(increase(pokemon_explanation_provider_events_total{outcome="attempt"}[10m])) > 15
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: External explanation traffic is approaching the global cost guardrail
+
+      - alert: PokemonPersonalityRefreshUnhealthy
+        expr: pokemon_personality_refresh_healthy == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Runtime personality vocabulary refresh remains unhealthy

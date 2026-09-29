@@ -20,6 +20,7 @@ Environment secrets:
 - `POSTGRES_PASSWORD`
 - `ADMIN_SESSION_SECRET` with at least 32 random characters
 - `GRAFANA_ADMIN_PASSWORD`
+- `ALERTMANAGER_CONFIG_FILE` pointing to a root-readable external receiver config
 - either `ADMIN_PASSWORD` or `ADMIN_ACCOUNTS_JSON`
 - optional `GEMINI_API_KEY`, `OPENAI_API_KEY`, and `HF_TOKEN`
 
@@ -51,7 +52,7 @@ python scripts/production/smoke_test.py \
   --base-url https://pokemon.example.com
 ```
 
-Prometheus and Grafana bind only to loopback. Reach them through an SSH tunnel instead of exposing their ports publicly.
+Prometheus, Grafana and Alertmanager bind only to loopback. Reach them through an SSH tunnel instead of exposing their ports publicly. Configure the receiver and cloud-account budgets using `docs/cost-controls.md` before enabling paid provider keys.
 
 ## Backup, rollback and restore
 

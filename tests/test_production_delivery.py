@@ -17,10 +17,35 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn('"443:443"', compose)
         self.assertIn('"127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"', compose)
         self.assertIn('"127.0.0.1:${GRAFANA_PORT:-3000}:3000"', compose)
+        self.assertIn('"127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"', compose)
         self.assertNotIn('"5432:5432"', compose)
         self.assertNotIn("build:", compose)
         self.assertIn("feedback-purge:", compose)
         self.assertIn("${FEEDBACK_RETENTION_DAYS:-90}", compose)
+
+    def test_production_alert_receiver_is_external_and_aws_budget_is_bounded(self):
+        compose = (ROOT / "compose.production.yml").read_text(encoding="utf-8")
+        budget = (ROOT / "ops" / "aws" / "artwork-budget.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("${ALERTMANAGER_CONFIG_FILE:?Set ALERTMANAGER_CONFIG_FILE}", compose)
+        self.assertNotIn("alertmanager.example.yml:/etc/alertmanager", compose)
+        self.assertIn("AWS::Budgets::Budget", budget)
+        self.assertIn("Amazon CloudFront", budget)
+        self.assertIn("Amazon Simple Storage Service", budget)
+        self.assertIn("Threshold: 50", budget)
+        self.assertIn("Threshold: 80", budget)
+        self.assertIn("Threshold: 100", budget)
+        self.assertIn("Address: !Ref AlertEmail", budget)
+        prometheus_block = compose[
+            compose.index("\n  prometheus:"):compose.index("\n  alertmanager:")
+        ]
+        alertmanager_block = compose[
+            compose.index("\n  alertmanager:"):compose.index("\n  grafana:")
+        ]
+        self.assertNotIn("condition: service_healthy", prometheus_block)
+        self.assertIn('user: "65534:65534"', alertmanager_block)
 
     def test_caddy_enforces_https_headers_and_live_upstream_checks(self):
         caddyfile = (ROOT / "ops" / "caddy" / "Caddyfile").read_text(encoding="utf-8")

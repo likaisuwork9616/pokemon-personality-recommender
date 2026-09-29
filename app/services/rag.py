@@ -193,6 +193,8 @@ class GroundedExplanationService:
     def __init__(
         self,
         providers: ExplanationProvider | Sequence[ExplanationProvider] | None = None,
+        *,
+        observer: Callable[[str, str], None] | None = None,
     ) -> None:
         if providers is None:
             self.providers: tuple[ExplanationProvider, ...] = ()
@@ -200,6 +202,7 @@ class GroundedExplanationService:
             self.providers = tuple(providers)
         else:
             self.providers = (providers,)
+        self.observer = observer
 
     @classmethod
     def from_env(
@@ -208,6 +211,7 @@ class GroundedExplanationService:
         *,
         gemini_client_factory: Callable[[str, float], Any] = _default_gemini_client,
         openai_client_factory: Callable[[str, float], Any] = _default_openai_client,
+        observer: Callable[[str, str], None] | None = None,
     ) -> GroundedExplanationService:
         config = RAGConfig.from_env(env)
         providers: list[ExplanationProvider] = []
@@ -241,7 +245,15 @@ class GroundedExplanationService:
                     )
                 )
 
-        return cls(providers)
+        return cls(providers, observer=observer)
+
+    def _observe(self, provider: str, outcome: str) -> None:
+        if self.observer is not None:
+            try:
+                self.observer(provider, outcome)
+            except Exception:
+                # Telemetry must never make the recommendation path unavailable.
+                pass
 
     def explain_many(
         self,
@@ -266,12 +278,15 @@ class GroundedExplanationService:
         }
         prompt = self._build_prompt(user_text, pokemon_results)
         for provider in self.providers:
+            self._observe(provider.name, "attempt")
             try:
                 bundle = provider.generate(prompt)
                 validated = self._validate_bundle(bundle, allowed)
             except Exception:
                 # Never expose provider errors because they may include prompts.
+                self._observe(provider.name, "failure")
                 continue
+            self._observe(provider.name, "success")
             return {
                 item.pokemon_id: GroundedExplanation(
                     text=item.text.strip(),
@@ -282,6 +297,7 @@ class GroundedExplanationService:
                 )
                 for item in validated.explanations
             }
+        self._observe("local", "fallback")
         return local
 
     def explain_today(
@@ -303,12 +319,15 @@ class GroundedExplanationService:
         }
         prompt = self._build_today_prompt(context, pokemon_result)
         for provider in self.providers:
+            self._observe(provider.name, "attempt")
             try:
                 bundle = provider.generate(prompt)
                 validated = self._validate_bundle(bundle, allowed)
                 item = validated.explanations[0]
             except Exception:
+                self._observe(provider.name, "failure")
                 continue
+            self._observe(provider.name, "success")
             return GroundedExplanation(
                 text=item.text.strip(),
                 citations=tuple(item.citations),
@@ -316,6 +335,7 @@ class GroundedExplanationService:
                 grounded=True,
                 used_fallback=provider.name != "gemini",
             )
+        self._observe("local", "fallback")
         return local
 
     @staticmethod
