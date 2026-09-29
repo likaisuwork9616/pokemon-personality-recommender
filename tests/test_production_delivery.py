@@ -25,9 +25,14 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertNotIn("build:", compose)
         self.assertIn("feedback-purge:", compose)
         self.assertIn("${FEEDBACK_RETENTION_DAYS:-90}", compose)
+        self.assertIn("${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL", compose)
+        self.assertNotIn("POKEMON_ARTWORK_BASE_URL:-https://", compose)
 
     def test_production_alert_receiver_is_external_and_aws_budget_is_bounded(self):
         compose = (ROOT / "compose.production.yml").read_text(encoding="utf-8")
+        alertmanager_example = (
+            ROOT / "ops" / "alertmanager" / "alertmanager.example.yml"
+        ).read_text(encoding="utf-8")
         budget = (ROOT / "ops" / "aws" / "artwork-budget.yml").read_text(
             encoding="utf-8"
         )
@@ -49,6 +54,9 @@ class ProductionDeliveryTests(unittest.TestCase):
         ]
         self.assertNotIn("condition: service_healthy", prometheus_block)
         self.assertIn('user: "65534:65534"', alertmanager_block)
+        self.assertIn("root:65534", alertmanager_example)
+        self.assertIn("0640", alertmanager_example)
+        self.assertNotIn("chmod it 0600", alertmanager_example)
 
     def test_caddy_enforces_https_headers_and_live_upstream_checks(self):
         caddyfile = (ROOT / "ops" / "caddy" / "Caddyfile").read_text(encoding="utf-8")
@@ -107,9 +115,29 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn("environment: production", workflow)
         self.assertIn('sh scripts/production/deploy.sh "$APP_IMAGE"', workflow)
         self.assertIn("ALERTMANAGER_CONFIG_FILE", workflow)
+        self.assertIn("POKEMON_ARTWORK_BASE_URL", workflow)
+        self.assertIn("POKEMON_BACKUP_DIR", workflow)
+        self.assertIn("POKEMON_DEPLOY_STATE_DIR", workflow)
+        self.assertIn("BACKUP_RETENTION_DAYS", workflow)
+
+    def test_production_environment_example_covers_operator_owned_state(self):
+        environment = (ROOT / ".env.production.example").read_text(encoding="utf-8")
+
+        self.assertIn("POKEMON_ARTWORK_BASE_URL=https://cdn.example.com", environment)
+        self.assertIn("POKEMON_BACKUP_DIR=/var/backups/pokemon-recommender", environment)
+        self.assertIn(
+            "POKEMON_DEPLOY_STATE_DIR=/var/lib/pokemon-recommender/deploy-state",
+            environment,
+        )
+        self.assertIn("BACKUP_RETENTION_DAYS=30", environment)
+        self.assertIn("PROMETHEUS_PORT=9090", environment)
+        self.assertIn("GRAFANA_PORT=3000", environment)
 
     def test_deployment_scripts_backup_smoke_test_and_gate_destructive_restore(self):
         deploy = (ROOT / "scripts" / "production" / "deploy.sh").read_text(encoding="utf-8")
+        rollback = (ROOT / "scripts" / "production" / "rollback.sh").read_text(
+            encoding="utf-8"
+        )
         restore = (ROOT / "scripts" / "production" / "restore_postgres.sh").read_text(
             encoding="utf-8"
         )
@@ -122,6 +150,8 @@ class ProductionDeliveryTests(unittest.TestCase):
 
         self.assertLess(deploy.index("backup_postgres.sh"), deploy.index("run --rm migrate"))
         self.assertIn("rollback.sh", deploy)
+        self.assertIn("${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL}", deploy)
+        self.assertIn("${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL}", rollback)
         self.assertIn("--confirm-database-overwrite", restore)
         self.assertIn("sha256sum -c", restore)
         self.assertIn("pg_restore --list", restore)

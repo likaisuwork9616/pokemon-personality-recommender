@@ -86,8 +86,11 @@ docker compose ps -a
 啟動依賴如下：
 
 ~~~text
-db → migrate → seed → embed → api → prometheus → grafana
-                           ├→ worker       └→ alertmanager
+db → migrate → seed → embed → api
+                           └→ worker
+
+alertmanager → prometheus → grafana
+api -- /metrics scrape --> prometheus
 ~~~
 
 - `migrate`：執行 `alembic upgrade head`。
@@ -99,7 +102,7 @@ db → migrate → seed → embed → api → prometheus → grafana
 - `alertmanager`：接收 Prometheus 告警；開發環境只在本機顯示，不傳送通知。
 - `grafana`：自動 provision Prometheus datasource 與 overview dashboard。
 
-正常狀態下，`migrate`、`seed`、`embed` 是 `Exited (0)`；`db`、`api`、`worker` 保持運行。
+正常狀態下，`migrate`、`seed`、`embed` 是 `Exited (0)`；`db`、`api`、`worker`、`alertmanager`、`prometheus`、`grafana` 保持運行。
 
 ### Log 與狀態
 
@@ -200,7 +203,7 @@ python scripts/import_pokemon.py
 python scripts/rebuild_embeddings.py --batch-size 64
 ~~~
 
-目前 migration head 是 `20260908_0008`。Importer 會驗證完整 CSV header、編號與欄位內容，可用 `--csv` 指定其他來源，也可用 `--artwork-base-url` 覆寫 artwork URL。
+使用 `alembic heads` 查詢目前唯一的 migration head；不要在操作流程中硬編版本號。Importer 會驗證完整 CSV header、編號與欄位內容，可用 `--csv` 指定其他來源，也可用 `--artwork-base-url` 覆寫 artwork URL。
 
 若要改用另一個 embedding lineage，應讓 API、worker 與重建工具使用相同的 `EMBEDDING_MODEL` 和 `EMBEDDING_MODEL_VERSION`。API 在啟動時會拒絕與 active model metadata 不一致的 encoder。
 
@@ -291,7 +294,7 @@ python scripts/reindex_worker.py
 python -m unittest discover -s tests -v
 ~~~
 
-未設定 `TEST_DATABASE_URL` 時，PostgreSQL importer integration test 會略過。若要執行目前全部 186 個案例，請建立可丟棄的 pgvector database、啟用 `vector` extension，再設定：
+未設定 `TEST_DATABASE_URL` 時，PostgreSQL importer integration test 會略過。若要執行包含資料庫整合測試的完整套件，請建立可丟棄的 pgvector database、啟用 `vector` extension，再設定：
 
 PowerShell：
 

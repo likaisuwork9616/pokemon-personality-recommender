@@ -53,7 +53,7 @@ services:
     command: ["python", "scripts/import_pokemon.py"]
     environment:
       DATABASE_URL: *database-url
-      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:-https://d3s7iszk0n7xst.cloudfront.net/images/pokemon/artwork}
+      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL to an operator-owned or explicitly approved artwork directory}
     depends_on:
       db:
         condition: service_healthy

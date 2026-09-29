@@ -21,6 +21,7 @@ esac
 : "${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET}"
 : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}"
 : "${ALERTMANAGER_CONFIG_FILE:?Set ALERTMANAGER_CONFIG_FILE}"
+: "${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL}"
 
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 compose_file="${repository_root}/compose.production.yml"

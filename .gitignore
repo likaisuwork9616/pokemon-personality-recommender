@@ -33,6 +33,7 @@ Thumbs.db
 *.sqlite*
 *.db
 *.dump
+*.dump.sha256
 *.bak
 /benchmarks/
 /evaluation-report*.json
