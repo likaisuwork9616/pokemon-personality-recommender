@@ -452,6 +452,7 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 - 若 Gemini 失敗且已設定 OpenAI key，資料也可能送至 OpenAI。
 - Provider 錯誤只用於內部 fallback，不會向 API 或 log 暴露 prompt。
 - LLM 不能改變排名、分數或引用其他寶可夢的證據。
+- 公開推薦與今日寶可夢 API 預設每來源每分鐘最多 10 次；要求契合分析時，另套用每來源每 10 分鐘 3 次及全站每 10 分鐘 20 次的上限。來源識別只以程序內隨機金鑰雜湊保存，不寫入資料庫或 log。
 - `.env`、圖片、上傳 manifest、資料庫備份、快取與本機開發藍圖均由 `.gitignore` 排除。
 
 ---
