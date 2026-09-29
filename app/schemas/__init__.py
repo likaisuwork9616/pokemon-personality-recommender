@@ -26,6 +26,13 @@ from .personality import (
     PublicPersonalityTrait,
     PublicPersonalityWeightedTerm,
 )
+from .today_pokemon import (
+    TodayCalendarResponse,
+    TodayFortuneResponse,
+    TodayPokemonResponse,
+    TodayPokemonSelectionResponse,
+    TodayZodiacResponse,
+)
 
 __all__ = [
     "CatalogDescription",
@@ -48,4 +55,9 @@ __all__ = [
     "RecommendationResponse",
     "RecommendationResult",
     "ScoreBreakdown",
+    "TodayCalendarResponse",
+    "TodayFortuneResponse",
+    "TodayPokemonResponse",
+    "TodayPokemonSelectionResponse",
+    "TodayZodiacResponse",
 ]

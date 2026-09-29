@@ -2,11 +2,22 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from starlette.concurrency import run_in_threadpool
 
-from app.schemas import PokemonSummary, RecommendationRequest, RecommendationResponse, RecommendationResult
+from app.schemas import (
+    PokemonSummary,
+    RecommendationRequest,
+    RecommendationResponse,
+    RecommendationResult,
+    TodayCalendarResponse,
+    TodayFortuneResponse,
+    TodayPokemonResponse,
+    TodayPokemonSelectionResponse,
+    TodayZodiacResponse,
+)
 from app.services.recommendation import RetrievalUnavailableError
+from app.today_pokemon_rules import ZodiacSign
 
 router = APIRouter(prefix="/api/v1")
 
@@ -15,6 +26,16 @@ def _engine(request: Request) -> Any:
     if engine is None:
         raise HTTPException(status_code=503, detail={"code": "service_not_ready", "message": "推薦模型尚未完成載入"})
     return engine
+
+
+def _today_service(request: Request) -> Any:
+    service = getattr(request.app.state, "today_pokemon_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "service_not_ready", "message": "今日寶可夢服務尚未完成載入"},
+        )
+    return service
 
 def _to_result(raw: dict[str, Any], explanation: dict[str, Any] | None) -> RecommendationResult:
     return RecommendationResult(
@@ -109,3 +130,104 @@ router.add_api_route(
     response_model=RecommendationResponse,
     summary="取得 Top 3 排名與 Top 1 契合分析",
 )
+
+
+@router.get(
+    "/today-pokemon",
+    response_model=TodayPokemonResponse,
+    summary="取得目前台北日期與時辰的代表寶可夢",
+)
+async def get_today_pokemon(
+    zodiac: ZodiacSign,
+    request: Request,
+    response: Response,
+) -> TodayPokemonResponse:
+    service = _today_service(request)
+    try:
+        def run_selection() -> TodayPokemonResponse:
+            outcome = service.select(zodiac)
+            explanation = service.explain(outcome)
+            raw = outcome.pokemon
+            return TodayPokemonResponse(
+                algorithm_version=outcome.algorithm_version,
+                generated_at=outcome.calendar.generated_at,
+                valid_until=outcome.calendar.valid_until,
+                zodiac=TodayZodiacResponse(
+                    code=outcome.zodiac.code,
+                    name_zh=outcome.zodiac.name_zh,
+                    symbol=outcome.zodiac.symbol,
+                    date_range=outcome.zodiac.date_range,
+                    element=outcome.zodiac.element,
+                    modality=outcome.zodiac.modality,
+                    traits=list(outcome.signal_trait_labels),
+                ),
+                calendar=TodayCalendarResponse(
+                    solar_date=outcome.calendar.solar_date,
+                    weekday_zh=outcome.calendar.weekday_zh,
+                    time_hm=outcome.calendar.time_hm,
+                    lunar_date_zh=outcome.calendar.lunar_date_zh,
+                    lunar_year_ganzhi=outcome.calendar.lunar_year_ganzhi,
+                    lunar_month_ganzhi=outcome.calendar.lunar_month_ganzhi,
+                    lunar_day_ganzhi=outcome.calendar.lunar_day_ganzhi,
+                    time_ganzhi=outcome.calendar.time_ganzhi,
+                    time_branch=outcome.calendar.time_branch,
+                    solar_term=outcome.calendar.solar_term,
+                    season=outcome.calendar.season,
+                    lunar_phase=outcome.calendar.lunar_phase,
+                ),
+                calendar_signals=list(outcome.calendar_signals),
+                selection=TodayPokemonSelectionResponse(
+                    pokemon=PokemonSummary(
+                        id=raw["database_id"],
+                        pokedex_number=raw["pokedex_number"],
+                        name_zh=raw.get("name", ""),
+                        name_en=raw.get("name_en", ""),
+                        types=raw.get("type", ""),
+                        image_url=raw.get("img") or None,
+                    ),
+                    source_rank=outcome.source_rank,
+                    selection_score=outcome.selection_score,
+                    pokemon_traits=list(raw.get("pokemon_traits", [])),
+                    type_affinities=list(outcome.type_affinities),
+                    evidence=list(raw.get("matching_evidence", [])),
+                    explanation=explanation,
+                ),
+                fortune=TodayFortuneResponse(
+                    overall=outcome.fortune.overall,
+                    work_study=outcome.fortune.work_study,
+                    relationships=outcome.fortune.relationships,
+                    vitality=outcome.fortune.vitality,
+                    action=outcome.fortune.action,
+                    reminder=outcome.fortune.reminder,
+                    disclaimer=outcome.fortune.disclaimer,
+                ),
+            )
+
+        result = await run_in_threadpool(run_selection)
+        max_age = max(
+            0,
+            int((result.valid_until - result.generated_at).total_seconds()) - 30,
+        )
+        response.headers["Cache-Control"] = f"private, max-age={max_age}"
+        return result
+    except RetrievalUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "retrieval_unavailable", "message": str(exc)},
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.getLogger("pokemon.today").warning(
+            json.dumps(
+                {"event": "today_pokemon_failed", "error_type": type(exc).__name__},
+                separators=(",", ":"),
+            )
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "today_pokemon_unavailable",
+                "message": "今日寶可夢暫時無法產生",
+            },
+        ) from exc

@@ -194,6 +194,31 @@ class TodayPokemonService:
             fortune=fortune,
         )
 
+    def explain(self, outcome: TodayPokemonOutcome) -> dict[str, object]:
+        """Explain the fixed selection without allowing the model to alter it."""
+
+        explanation_service = getattr(self.engine, "explanation_service", None)
+        explain_today = getattr(explanation_service, "explain_today", None)
+        if not callable(explain_today):
+            raise RuntimeError("today Pokémon explanation service is unavailable")
+        context = {
+            "zodiac": {
+                "code": outcome.zodiac.code.value,
+                "name_zh": outcome.zodiac.name_zh,
+                "element": outcome.zodiac.element,
+                "modality": outcome.zodiac.modality,
+                "traits": list(outcome.signal_trait_labels),
+            },
+            "calendar": {
+                "solar_date": outcome.calendar.solar_date,
+                "lunar_date_zh": outcome.calendar.lunar_date_zh,
+                "solar_term": outcome.calendar.solar_term,
+                "time_branch": outcome.calendar.time_branch,
+                "signals": list(outcome.calendar_signals),
+            },
+        }
+        return explain_today(context, outcome.pokemon).as_dict()
+
     @staticmethod
     def _signals(
         profile: ZodiacProfile,
