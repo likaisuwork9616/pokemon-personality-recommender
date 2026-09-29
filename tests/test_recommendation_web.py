@@ -37,8 +37,8 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260908-2', response.text)
-        self.assertIn('/static/css/app.css?v=20260929-1', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20260929-2', response.text)
+        self.assertIn('/static/css/app.css?v=20260929-3', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("系統採用的人格特質", response.text)
         self.assertIn('id="public-type-weight-status"', response.text)
@@ -66,8 +66,8 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertNotIn("explainToggle", source)
         self.assertNotIn("explanationPrompt", source)
         self.assertIn("payload.results.length !== 3", source)
-        self.assertIn("resultCard(payload.results[0])", source)
-        self.assertIn("payload.results.slice(1).map(alternativeResultCard)", source)
+        self.assertIn("resultCard(payload.results[0], payload.recommendation_id)", source)
+        self.assertIn("alternativeResultCard(item, payload.recommendation_id)", source)
         self.assertIn("textContent", source)
         self.assertIn('"AI 契合分析"', source)
         self.assertIn('gemini: "Gemini 分析"', source)
@@ -87,6 +87,21 @@ class RecommendationWebTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
 
+    def test_recommendation_cards_submit_bounded_anonymous_feedback(self):
+        source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        template = (ROOT / "app" / "templates" / "recommendation.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('fetch("/api/v1/recommendation-feedback"', source)
+        self.assertIn("recommendation_id: recommendationId", source)
+        self.assertIn("personality_mismatch", source)
+        self.assertIn("ranking", source)
+        self.assertIn("unfamiliar", source)
+        self.assertIn("匿名回饋只綁定收據 UUID、演算法版本與當次 Top 3", template)
+
     def test_public_pages_link_back_to_recommendation(self):
         for path in ("/pokemon", "/pokemon/1", "/admin"):
             with self.subTest(path=path):
@@ -100,7 +115,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260929-1', response.text)
+                self.assertIn('/static/css/app.css?v=20260929-3', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -202,7 +217,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260929-1", response.text)
+        self.assertIn("/static/css/app.css?v=20260929-3", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="管理寶可夢圖鑑資料、啟用狀態與檢索來源。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260929-1">
-  <script src="/static/js/admin.js?v=20260929-1" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260929-3">
+  <script src="/static/js/admin.js?v=20260929-3" defer></script>
 </head>
 <body data-page="admin" data-theme="pokedex">
   <a class="skip-link" href="#admin-main">跳到管理內容</a>
@@ -157,6 +157,19 @@
 
         <div id="evaluation-quality" class="evaluation-quality" aria-live="polite"></div>
         <div id="evaluation-cases" class="evaluation-cases"></div>
+      </section>
+
+      <section class="card evaluation-panel" aria-labelledby="feedback-summary-title">
+        <div class="panel-heading evaluation-heading">
+          <div>
+            <p class="eyebrow">ANONYMOUS FEEDBACK</p>
+            <h2 id="feedback-summary-title">推薦回饋彙總</h2>
+            <p class="muted">只顯示匿名收據的整體、名次與演算法版本統計，不保存或顯示原始人格描述。</p>
+          </div>
+          <button id="feedback-summary-refresh" class="button button-ghost" type="button">更新回饋統計</button>
+        </div>
+        <div id="feedback-summary" class="evaluation-quality" aria-live="polite"></div>
+        <div id="feedback-breakdown" class="feedback-breakdown"></div>
       </section>
     </section>
   </main>

@@ -152,6 +152,29 @@ class QueryPersistenceTests(unittest.TestCase):
         self.assertTrue(lexical_session.statements[0].is_select)
         self.assertFalse(any("query" in table_name for table_name in Base.metadata.tables))
 
+    def test_feedback_tables_never_store_query_or_client_identity(self):
+        columns = {
+            column.name
+            for table_name in (
+                "recommendation_impressions",
+                "recommendation_impression_items",
+                "recommendation_feedback",
+            )
+            for column in Base.metadata.tables[table_name].columns
+        }
+        self.assertFalse(
+            {
+                "query",
+                "query_text",
+                "query_vector",
+                "description",
+                "ip_address",
+                "user_agent",
+                "user_id",
+            }
+            & columns
+        )
+
     def test_hybrid_engine_does_not_retain_raw_query_or_query_vector(self):
         marker = "PRIVATE-IN-MEMORY-MARKER"
 

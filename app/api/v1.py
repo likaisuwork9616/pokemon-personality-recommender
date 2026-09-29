@@ -1,3 +1,5 @@
+import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -48,12 +50,13 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
                             top_result,
                         )
                     }
-            return RecommendationResponse(
-                algorithm_version=(
+            algorithm_version = (
                     "pgvector-fts-rrf-cross-encoder-v1"
                     if getattr(engine, "reranker", None) is not None
                     else "pgvector-fts-rrf-v1"
-                ),
+                )
+            response = RecommendationResponse(
+                algorithm_version=algorithm_version,
                 results=[
                     _to_result(
                         raw,
@@ -62,6 +65,30 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
                     for raw in raw_results
                 ]
             )
+            feedback_service = getattr(request.app.state, "feedback_service", None)
+            if feedback_service is not None:
+                try:
+                    recommendation_id = feedback_service.record_impression(
+                        algorithm_version=algorithm_version,
+                        ranked_pokemon=[
+                            (int(raw["rank"]), int(raw["database_id"]))
+                            for raw in raw_results
+                        ],
+                    )
+                    response = response.model_copy(
+                        update={"recommendation_id": recommendation_id}
+                    )
+                except Exception as exc:
+                    logging.getLogger("pokemon.feedback").warning(
+                        json.dumps(
+                            {
+                                "event": "feedback_impression_failed",
+                                "error_type": type(exc).__name__,
+                            },
+                            separators=(",", ":"),
+                        )
+                    )
+            return response
 
         return await run_in_threadpool(run_recommendation)
     except RetrievalUnavailableError as exc:

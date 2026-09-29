@@ -125,7 +125,78 @@
     return section;
   };
 
-  const resultCard = (result) => {
+  const submitFeedback = async (recommendationId, result, verdict, reason, panel) => {
+    const controls = Array.from(panel.querySelectorAll("button, select"));
+    const status = panel.querySelector(".feedback-status");
+    controls.forEach((control) => { control.disabled = true; });
+    status.textContent = "正在保存……";
+    try {
+      const response = await fetch("/api/v1/recommendation-feedback", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recommendation_id: recommendationId,
+          pokemon_id: result.pokemon.id,
+          rank: result.rank,
+          verdict,
+          reason,
+        }),
+      });
+      if (!response.ok) throw new Error("回饋暫時無法保存");
+      status.textContent = verdict === "match"
+        ? "謝謝，你認為這項推薦符合。"
+        : "謝謝，已記錄這項推薦需要改善。";
+    } catch (error) {
+      status.textContent = `${error.message || "回饋暫時無法保存"}，請稍後再試。`;
+      status.classList.add("is-error");
+    } finally {
+      controls.forEach((control) => { control.disabled = false; });
+    }
+  };
+
+  const feedbackPanel = (recommendationId, result) => {
+    if (!recommendationId) return null;
+    const panel = element("section", "recommendation-feedback");
+    panel.setAttribute("aria-label", `${result.pokemon.name_zh} 推薦回饋`);
+    panel.append(element("p", "feedback-question", "這項推薦符合你嗎？"));
+    const controls = element("div", "feedback-controls");
+    const positive = element("button", "button button-ghost feedback-positive", "符合");
+    positive.type = "button";
+    const negative = element("button", "button button-ghost feedback-negative", "不符合");
+    negative.type = "button";
+    const reason = document.createElement("select");
+    reason.setAttribute("aria-label", "不符合原因（可選）");
+    [
+      ["no_reason", "不符合原因（可選）"],
+      ["personality_mismatch", "個性不太符合"],
+      ["ranking", "排序不如預期"],
+      ["unfamiliar", "對這隻寶可夢不熟悉"],
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      reason.append(option);
+    });
+    const status = element("p", "feedback-status");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    positive.addEventListener("click", () => {
+      status.classList.remove("is-error");
+      submitFeedback(recommendationId, result, "match", "no_reason", panel);
+    });
+    negative.addEventListener("click", () => {
+      status.classList.remove("is-error");
+      submitFeedback(recommendationId, result, "not_match", reason.value, panel);
+    });
+    controls.append(positive, negative, reason);
+    panel.append(controls, status);
+    return panel;
+  };
+
+  const resultCard = (result, recommendationId) => {
     const pokemon = result.pokemon;
     const card = element("article", `recommendation-card primary-result rank-${result.rank}`);
     const heading = element("div", "recommendation-card-heading");
@@ -160,10 +231,12 @@
 
     card.append(heading, typeList, scores);
     if (result.explanation) card.append(explanationCard(result.explanation));
+    const feedback = feedbackPanel(recommendationId, result);
+    if (feedback) card.append(feedback);
     return card;
   };
 
-  const alternativeResultCard = (result) => {
+  const alternativeResultCard = (result, recommendationId) => {
     const pokemon = result.pokemon;
     const card = element("article", `alternative-result-card rank-${result.rank}`);
     const content = element("div", "alternative-result-content");
@@ -184,6 +257,8 @@
       element("strong", "", `契合 ${percent(result.scores.total)}%`),
     );
     content.append(details);
+    const feedback = feedbackPanel(recommendationId, result);
+    if (feedback) content.append(feedback);
     card.append(pokemonImage(pokemon, "alternative-result-image"), content);
     return card;
   };
@@ -198,8 +273,10 @@
       throw new Error("推薦結果格式不完整，請稍後再試。");
     }
     if (!alternatives) throw new Error("推薦結果容器不完整，請稍後再試。");
-    grid.replaceChildren(resultCard(payload.results[0]));
-    alternatives.replaceChildren(...payload.results.slice(1).map(alternativeResultCard));
+    grid.replaceChildren(resultCard(payload.results[0], payload.recommendation_id));
+    alternatives.replaceChildren(
+      ...payload.results.slice(1).map((item) => alternativeResultCard(item, payload.recommendation_id)),
+    );
     algorithm.textContent = `演算法版本：${payload.algorithm_version || "unknown"}`;
     results.hidden = false;
     results.focus({ preventScroll: true });

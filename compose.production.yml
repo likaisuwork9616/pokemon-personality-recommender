@@ -74,6 +74,24 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  feedback-purge:
+    image: *app-image
+    pull_policy: always
+    command:
+      - python
+      - scripts/purge_recommendation_feedback.py
+      - --retention-days
+      - ${FEEDBACK_RETENTION_DAYS:-90}
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["maintenance"]
+    security_opt:
+      - no-new-privileges:true
+
   api:
     image: *app-image
     pull_policy: always

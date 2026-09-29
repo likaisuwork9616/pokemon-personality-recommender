@@ -67,6 +67,7 @@
     loadList();
     loadVocabulary();
     loadEvaluation();
+    loadFeedbackSummary();
   };
 
   const showLogin = () => {
@@ -719,6 +720,36 @@
     }
   }
 
+  async function loadFeedbackSummary() {
+    try {
+      const summary = await api("/feedback/summary");
+      const values = [
+        ["推薦收據", summary.total_impressions],
+        ["已回饋收據", summary.rated_impressions],
+        ["回應率", `${Math.round(summary.response_rate * 100)}%`],
+        ["符合率", `${Math.round(summary.match_rate * 100)}%`],
+      ];
+      byId("feedback-summary").replaceChildren(...values.map(([label, value]) => {
+        const item = document.createElement("div");
+        const term = document.createElement("small");
+        const result = document.createElement("strong");
+        term.textContent = String(label);
+        result.textContent = String(value);
+        item.append(term, result);
+        return item;
+      }));
+      const breakdown = byId("feedback-breakdown");
+      breakdown.replaceChildren(...summary.by_rank.map((item) => {
+        const row = document.createElement("p");
+        row.textContent = `Rank ${item.rank} · ${item.feedback_count} 筆 · 符合率 ${Math.round(item.match_rate * 100)}%`;
+        return row;
+      }));
+      if (!summary.by_rank.length) breakdown.textContent = "尚未收到推薦回饋。";
+    } catch (error) {
+      setStatus(error.message, true);
+    }
+  }
+
   byId("admin-login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -860,6 +891,7 @@
     }
   });
   byId("evaluation-refresh").addEventListener("click", loadEvaluation);
+  byId("feedback-summary-refresh").addEventListener("click", loadFeedbackSummary);
 
   byId("admin-reindex").addEventListener("click", async () => {
     if (!state.selected) return;

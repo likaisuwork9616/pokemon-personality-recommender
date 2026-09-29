@@ -129,6 +129,10 @@ class RecommendationResult(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
+    recommendation_id: UUID | None = Field(
+        default=None,
+        description="匿名回饋收據；未保存成功時為 null",
+    )
     algorithm_version: str = "pgvector-fts-rrf-v1"
     results: list[RecommendationResult] = Field(min_length=3, max_length=3)
 
@@ -142,3 +146,52 @@ class RecommendationResponse(BaseModel):
         if any(result.explanation is not None for result in self.results[1:]):
             raise ValueError("only the top-ranked recommendation may include an explanation")
         return self
+
+
+class RecommendationFeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recommendation_id: UUID
+    pokemon_id: int = Field(gt=0)
+    rank: int = Field(ge=1, le=3)
+    verdict: Literal["match", "not_match"]
+    reason: Literal[
+        "no_reason",
+        "personality_mismatch",
+        "ranking",
+        "unfamiliar",
+    ] = "no_reason"
+
+    @model_validator(mode="after")
+    def match_does_not_need_a_negative_reason(self) -> Self:
+        if self.verdict == "match" and self.reason != "no_reason":
+            raise ValueError("positive feedback cannot include a negative reason")
+        return self
+
+
+class RecommendationFeedbackResponse(BaseModel):
+    accepted: Literal[True] = True
+    created: bool
+
+
+class FeedbackRankSummary(BaseModel):
+    rank: int = Field(ge=1, le=3)
+    feedback_count: int = Field(ge=0)
+    match_rate: float = Field(ge=0, le=1)
+
+
+class FeedbackAlgorithmSummary(BaseModel):
+    algorithm_version: str
+    feedback_count: int = Field(ge=0)
+    match_rate: float = Field(ge=0, le=1)
+
+
+class RecommendationFeedbackSummary(BaseModel):
+    total_impressions: int = Field(ge=0)
+    rated_impressions: int = Field(ge=0)
+    response_rate: float = Field(ge=0, le=1)
+    total_feedback: int = Field(ge=0)
+    match_rate: float = Field(ge=0, le=1)
+    by_rank: list[FeedbackRankSummary]
+    by_reason: dict[str, int]
+    by_algorithm: list[FeedbackAlgorithmSummary]
