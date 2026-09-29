@@ -38,6 +38,13 @@
 | `OPENAI_API_KEY` | 空白 | Gemini 失敗時使用的 OpenAI 備援 key |
 | `OPENAI_MODEL` | `gpt-5-mini` | OpenAI model ID |
 | `RAG_TIMEOUT_SECONDS` | `20` | 每個外部 provider 的 timeout |
+| `RECOMMENDATION_RATE_LIMIT_ENABLED` | `true` | 是否啟用公開推薦防濫用限制 |
+| `RECOMMENDATION_RATE_LIMIT_WINDOW_SECONDS` | `60` | 一般推薦請求計數視窗 |
+| `RECOMMENDATION_RATE_LIMIT_REQUESTS` | `10` | 每來源於一般視窗可執行的推薦次數 |
+| `EXPLANATION_RATE_LIMIT_WINDOW_SECONDS` | `600` | 外部契合分析計數視窗 |
+| `EXPLANATION_RATE_LIMIT_REQUESTS` | `3` | 每來源於分析視窗可要求的契合分析次數 |
+| `EXPLANATION_GLOBAL_RATE_LIMIT_REQUESTS` | `20` | 單一 API 程序於分析視窗可接受的契合分析總數 |
+| `RATE_LIMIT_MAX_TRACKED_CLIENTS` | `10000` | 程序內最多保留的雜湊來源視窗數 |
 | `ADMIN_PASSWORD` | 空白 | 向下相容的 `admin` 角色密碼 |
 | `ADMIN_ACCOUNTS_JSON` | 空白 | `username / password / role` 管理帳號 JSON 陣列 |
 | `ADMIN_SESSION_SECRET` | 空白 | cookie 簽章 secret，至少 32 字元 |
@@ -47,6 +54,8 @@
 | `HF_TOKEN` | 空白 | 下載 Hugging Face 模型的選配 token |
 
 Compose 會從 `POSTGRES_*` 組出容器內的 `DATABASE_URL`。從主機直接執行 Alembic 或 scripts 時，hostname 應使用 `localhost`，不能沿用容器內的 `db`。
+
+Rate limit 目前是單一 API 程序內的滑動視窗，符合既有 production 單程序設定。若未來增加 API replicas，還必須在 Cloudflare／負載平衡器或共享儲存層加入跨程序限制。回應超限時為 `429`，並提供 `Retry-After` 與 `X-RateLimit-*` headers。設定 Gemini／OpenAI 金鑰時，仍應同時在 provider 帳務端設定預算與硬性用量上限。
 
 ### 管理角色與 Audit Log
 

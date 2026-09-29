@@ -53,7 +53,49 @@ def _to_result(raw: dict[str, Any], explanation: dict[str, Any] | None) -> Recom
         explanation=explanation,
     )
 
-async def create_recommendation(payload: RecommendationRequest, request: Request) -> RecommendationResponse:
+
+def _enforce_recommendation_rate_limit(
+    request: Request,
+    response: Response,
+    *,
+    explanation_requested: bool,
+) -> None:
+    guard = getattr(request.app.state, "recommendation_abuse_guard", None)
+    if guard is None:
+        return
+    client_identity = request.client.host if request.client is not None else "unknown"
+    decision = guard.check(
+        client_identity,
+        explanation_requested=explanation_requested,
+    )
+    response.headers["X-RateLimit-Limit"] = str(decision.limit)
+    response.headers["X-RateLimit-Remaining"] = str(decision.remaining)
+    if decision.allowed:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail={
+            "code": "recommendation_rate_limited",
+            "message": "請稍候再試，公開推薦服務目前請求過多。",
+        },
+        headers={
+            "Retry-After": str(decision.retry_after_seconds),
+            "X-RateLimit-Limit": str(decision.limit),
+            "X-RateLimit-Remaining": "0",
+        },
+    )
+
+
+async def create_recommendation(
+    payload: RecommendationRequest,
+    request: Request,
+    response: Response,
+) -> RecommendationResponse:
+    _enforce_recommendation_rate_limit(
+        request,
+        response,
+        explanation_requested=payload.generate_explanation,
+    )
     engine = _engine(request)
     try:
         def run_recommendation() -> RecommendationResponse:
@@ -142,6 +184,11 @@ async def get_today_pokemon(
     request: Request,
     response: Response,
 ) -> TodayPokemonResponse:
+    _enforce_recommendation_rate_limit(
+        request,
+        response,
+        explanation_requested=True,
+    )
     service = _today_service(request)
     try:
         def run_selection() -> TodayPokemonResponse:

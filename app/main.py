@@ -21,6 +21,10 @@ from app.api.v1 import router as v1_router
 from app.services.admin_auth import AdminAuth, AdminAuthConfig
 from app.services.embedding import DEFAULT_MODEL_NAME
 from app.services.rag import GroundedExplanationService
+from app.services.rate_limit import (
+    RecommendationAbuseGuard,
+    RecommendationRateLimitConfig,
+)
 from app.services.recommendation import HybridRecommendationEngine
 from app.services.observability import RequestMetrics
 from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
@@ -114,6 +118,7 @@ def create_app(
     readiness_config: ReadinessConfig | None = None,
     feedback_service: Any | None = None,
     today_pokemon_service: Any | None = None,
+    recommendation_abuse_guard: RecommendationAbuseGuard | None = None,
 ) -> FastAPI:
     using_default_engine = engine_factory is None
     factory = engine_factory or _default_engine_factory
@@ -171,6 +176,10 @@ def create_app(
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = RequestMetrics()
     application.state.readiness_config = readiness_config or ReadinessConfig.from_env()
+    application.state.recommendation_abuse_guard = (
+        recommendation_abuse_guard
+        or RecommendationAbuseGuard(RecommendationRateLimitConfig.from_env())
+    )
 
     @application.middleware("http")
     async def observe_requests(request: Request, call_next):
