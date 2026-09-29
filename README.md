@@ -491,9 +491,10 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 
 - 選配的 AWS Pipeline 使用本機整理自[寶可夢官方圖鑑](https://tw.portal-pokemon.com/play/pokedex/)的 artwork。
 - 圖片檔與上傳 manifest 不納入 repository。
+- `scripts/audit_artwork_delivery.py` 可重新驗證 1,025 筆官方來源 URL、本機 SHA-256、既有 S3／CloudFront 驗證紀錄與線上 CDN 抽樣；來源可追溯不等同取得重製、公開傳輸或商業使用授權。
 - 本 repository 目前未附開源授權條款；在新增 `LICENSE` 前，請勿假設可以自由使用、修改或散布程式碼。
 
-本專案供非商業、教育與作品集展示使用。Pokémon、寶可夢名稱及相關圖像的商標與著作權屬其各自權利人所有。
+本專案供非商業、教育與作品集展示使用。公開頁面會持續顯示非官方聲明；Pokémon、寶可夢名稱及相關圖像的商標與著作權屬其各自權利人所有。若權利人要求移除，營運者應停止發送相關圖像並更新資料來源。
 
 ---
 
