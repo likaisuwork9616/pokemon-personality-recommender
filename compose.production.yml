@@ -28,6 +28,8 @@ services:
       start_period: 10s
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
 
   migrate:
     image: *app-image
@@ -42,6 +44,8 @@ services:
     profiles: ["maintenance"]
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
 
   seed:
     image: *app-image
@@ -57,6 +61,8 @@ services:
     profiles: ["maintenance"]
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
 
   embed:
     image: *app-image
@@ -73,6 +79,9 @@ services:
     profiles: ["maintenance"]
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
+      - model-egress
 
   feedback-purge:
     image: *app-image
@@ -91,12 +100,14 @@ services:
     profiles: ["maintenance"]
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
 
   api:
     image: *app-image
     pull_policy: always
     restart: unless-stopped
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=172.30.250.2"]
     environment:
       <<: *runtime-environment
       PGVECTOR_SEARCH_MODE: ${PGVECTOR_SEARCH_MODE:-hnsw}
@@ -146,6 +157,10 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    networks:
+      - edge
+      - data
+      - observability
 
   worker:
     image: *app-image
@@ -166,6 +181,9 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    networks:
+      - data
+      - model-egress
 
   caddy:
     image: caddy:2.10.2-alpine
@@ -186,6 +204,9 @@ services:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
+    networks:
+      edge:
+        ipv4_address: 172.30.250.2
 
   prometheus:
     image: prom/prometheus:v3.14.0
@@ -205,6 +226,8 @@ services:
         condition: service_started
     security_opt:
       - no-new-privileges:true
+    networks:
+      - observability
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
@@ -220,6 +243,9 @@ services:
       - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
     security_opt:
       - no-new-privileges:true
+    networks:
+      - observability
+      - notification-egress
 
   grafana:
     image: grafana/grafana:13.2.1
@@ -241,6 +267,8 @@ services:
         condition: service_started
     security_opt:
       - no-new-privileges:true
+    networks:
+      - observability
 
 volumes:
   postgres_data:
@@ -250,3 +278,15 @@ volumes:
   grafana_data:
   caddy_data:
   caddy_config:
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.250.0/29
+  data:
+    internal: true
+  observability:
+    internal: true
+  model-egress:
+  notification-egress:

@@ -19,6 +19,9 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn('"127.0.0.1:${GRAFANA_PORT:-3000}:3000"', compose)
         self.assertIn('"127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"', compose)
         self.assertNotIn('"5432:5432"', compose)
+        self.assertNotIn('"0.0.0.0:${PROMETHEUS_PORT', compose)
+        self.assertNotIn('"0.0.0.0:${GRAFANA_PORT', compose)
+        self.assertNotIn('"0.0.0.0:${ALERTMANAGER_PORT', compose)
         self.assertNotIn("build:", compose)
         self.assertIn("feedback-purge:", compose)
         self.assertIn("${FEEDBACK_RETENTION_DAYS:-90}", compose)
@@ -55,6 +58,21 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn('X-Content-Type-Options "nosniff"', caddyfile)
         self.assertIn("health_uri /health/live", caddyfile)
         self.assertIn("reverse_proxy api:8000", caddyfile)
+        self.assertIn("@private_metrics path /metrics /metrics/*", caddyfile)
+        self.assertIn("respond @private_metrics 404", caddyfile)
+        self.assertIn("max_size 16KB", caddyfile)
+
+    def test_proxy_trust_and_service_networks_are_narrow(self):
+        compose = (ROOT / "compose.production.yml").read_text(encoding="utf-8")
+
+        self.assertNotIn("--forwarded-allow-ips=*", compose)
+        self.assertIn("--forwarded-allow-ips=172.30.250.2", compose)
+        self.assertIn("ipv4_address: 172.30.250.2", compose)
+        self.assertIn("subnet: 172.30.250.0/29", compose)
+        self.assertIn("data:\n    internal: true", compose)
+        self.assertIn("observability:\n    internal: true", compose)
+        self.assertIn("- model-egress", compose)
+        self.assertIn("- notification-egress", compose)
 
     def test_release_uses_immutable_digest_and_protected_self_hosted_runner(self):
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
@@ -66,6 +84,7 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn("runs-on: [self-hosted, linux, x64, pokemon-production]", workflow)
         self.assertIn("environment: production", workflow)
         self.assertIn('sh scripts/production/deploy.sh "$APP_IMAGE"', workflow)
+        self.assertIn("ALERTMANAGER_CONFIG_FILE", workflow)
 
     def test_deployment_scripts_backup_smoke_test_and_gate_destructive_restore(self):
         deploy = (ROOT / "scripts" / "production" / "deploy.sh").read_text(encoding="utf-8")
@@ -92,6 +111,11 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertIn(".tmp", backup)
         self.assertIn("Strict-Transport-Security", smoke)
         self.assertIn('"/health/ready"', smoke)
+        self.assertIn('live != {"status": "ok"}', smoke)
+        self.assertIn('"/metrics"', smoke)
+        self.assertIn("expected_status=404", smoke)
+        self.assertIn("audit_compose_exposure.py", deploy)
+        self.assertIn("alertmanager prometheus grafana caddy", deploy)
 
     def test_daily_maintenance_timer_is_persistent_and_runs_bounded_tasks(self):
         service = (ROOT / "ops" / "systemd" / "pokemon-maintenance.service").read_text(

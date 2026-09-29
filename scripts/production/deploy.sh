@@ -20,6 +20,7 @@ esac
 : "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
 : "${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET}"
 : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}"
+: "${ALERTMANAGER_CONFIG_FILE:?Set ALERTMANAGER_CONFIG_FILE}"
 
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 compose_file="${repository_root}/compose.production.yml"
@@ -35,6 +36,8 @@ fi
 
 export APP_IMAGE="${new_image}"
 docker compose -f "${compose_file}" config --quiet
+docker compose -f "${compose_file}" config --format json \
+    | python "${repository_root}/scripts/production/audit_compose_exposure.py"
 
 if [ -n "$(docker compose -f "${compose_file}" ps --status running --quiet db)" ]; then
     sh "${repository_root}/scripts/production/backup_postgres.sh"
@@ -45,7 +48,7 @@ docker compose -f "${compose_file}" up -d db
 docker compose -f "${compose_file}" run --rm migrate
 docker compose -f "${compose_file}" run --rm seed
 docker compose -f "${compose_file}" run --rm embed
-docker compose -f "${compose_file}" up -d api worker prometheus grafana caddy
+docker compose -f "${compose_file}" up -d api worker alertmanager prometheus grafana caddy
 
 if ! python "${repository_root}/scripts/production/smoke_test.py" \
     --base-url "https://${PUBLIC_DOMAIN}"; then
