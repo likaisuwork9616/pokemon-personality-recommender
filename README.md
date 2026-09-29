@@ -37,7 +37,7 @@
 ## 核心特色
 
 - **自然語言人格推薦**：輸入個性、興趣或生活習慣，取得可重現的 Top 3 排名。
-- **今日寶可夢規則核心**：以台北國曆／農曆、節氣、傳統時辰與西洋星座特質建立可重現的每日匹配及娛樂運勢。
+- **今日寶可夢**：公開 `/today` 星座頁面，以台北國曆／農曆、節氣、傳統時辰與圖鑑證據建立可重現的每日匹配及娛樂運勢。
 - **Hybrid Retrieval**：結合 pgvector Dense Retrieval、jieba 中文斷詞、PostgreSQL Full Text Search 與 RRF。
 - **可量測的重排實驗**：內建多語 Cross-Encoder A/B 工具、品質門檻與延遲預算；目前 CPU 實測未達門檻，因此預設關閉。
 - **Grounded RAG**：LLM 只能使用當次 evidence allowlist，所有說明均可追溯至圖鑑文件與 chunk。
@@ -62,8 +62,10 @@ flowchart TB
     subgraph ACCESS["存取層"]
         direction LR
         USER["使用者"] --> WEB["Web UI<br/>FastAPI + Jinja2"]
+        USER --> TODAY["今日寶可夢<br/>星座選擇與四面向運勢"]
         ADMIN["管理員"] --> ADMIN_UI["管理後台<br/>RBAC"]
         WEB --> API["REST API<br/>/api/v1"]
+        TODAY --> API
         ADMIN_UI --> API
     end
 
@@ -75,6 +77,9 @@ flowchart TB
         FTS --> RRF
         RRF --> SCORE["人格與屬性加權<br/>分數融合、穩定排序"]
         SCORE --> TOP3["Top 3<br/>排名、分數、證據"]
+        CALENDAR["台北國農曆、節氣、時辰<br/>西洋星座規則"] --> ENCODER
+        CALENDAR --> TOKENS
+        SCORE --> TODAY_PICK["今日 Top 10 候選<br/>90% 相關性 + 10% 穩定輪替"]
     end
 
     subgraph EXPLANATION["Top 1 說明"]
@@ -105,6 +110,7 @@ flowchart TB
     API --> ENCODER
     API --> TOKENS
     TOP3 --> PACKET
+    TODAY_PICK --> PACKET
     API <--> DB
     API --> READY
     READY --> DB
@@ -260,6 +266,7 @@ Alembic Migration → 匯入 1,025 筆 Seed 資料 → 建立 Embeddings → 啟
 | 功能 | URL |
 | --- | --- |
 | 人格推薦 | <http://localhost:8000/> |
+| 今日寶可夢 | <http://localhost:8000/today> |
 | 寶可夢圖鑑 | <http://localhost:8000/pokemon> |
 | Prometheus | <http://localhost:9090> |
 | Grafana | <http://localhost:3000> |
@@ -436,6 +443,7 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 ## 隱私與安全
 
 - 原始個性描述與 query vector 只存在 request scope。
+- 今日寶可夢只接收十二星座列舉，不收集生日；選擇僅留在可分享的網址 query，不寫入資料庫或瀏覽器儲存空間。
 - 原始描述不寫入 PostgreSQL、應用程式 log 或瀏覽器儲存空間。
 - 匿名回饋只保存 recommendation UUID、演算法版本、Top 3 ID／名次與固定列舉；不保存自由文字、IP、User-Agent 或帳號識別。
 - 回饋採 `(recommendation_id, pokemon_id)` 唯一鍵覆寫，並提供預設 90 天 retention 清理工具。
@@ -462,6 +470,8 @@ python scripts/export_evaluation_dataset.py --dataset-version 2026.10 --output e
 | **P2 — Provider 韌性與成本觀測**：DB readiness 不代表 Gemini／OpenAI 可用，但本地 fallback 仍可提供服務。 | 為外部 provider 增加 timeout／failure／fallback／成本指標、circuit breaker 與告警；provider 異常不阻斷核心推薦 readiness。 |
 | **P2 — 下一輪排序品質實驗**：現有多語 Cross-Encoder 未通過 `+0.001 nDCG／≤250 ms` 門檻。 | 以輕量模型、特徵權重或 query expansion 進行離線 A/B；只有同時通過品質與延遲門檻才進入 runtime。 |
 | **P2 — 容量與恢復基準**：目前已有功能與單點故障驗證，尚未建立持續負載基準。 | 加入固定資料量的 load test、容量門檻、備份還原計時與定期故障演練。 |
+| **P2 — 今日寶可夢規則評估**：v1 已具備固定選角、圖鑑依據與四面向娛樂運勢，但尚無獨立滿意度資料。 | 加入不保存生日的 bounded feedback，累積至少 500 筆後按星座／時辰切片評估規則與停止條件。 |
+| **P3 — 今日體驗國際化**：目前固定台北時區，結果分享仍以網址為主。 | 在不改變預設台北規則下加入可選時區、生日在瀏覽器端換算星座、分享圖卡與跨程序預先產生快取。 |
 
 ---
 

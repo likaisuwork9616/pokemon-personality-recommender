@@ -46,6 +46,17 @@ async def catalog_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/today", response_class=HTMLResponse, name="today_pokemon")
+async def today_pokemon_page(request: Request) -> HTMLResponse:
+    """Render the zodiac and Taipei calendar based daily Pokémon experience."""
+
+    return templates.TemplateResponse(
+        request=request,
+        name="today_pokemon.html",
+        context={"page_title": "今日寶可夢"},
+    )
+
+
 @router.get(
     "/pokemon/{pokemon_id}",
     response_class=HTMLResponse,

@@ -2089,6 +2089,440 @@ button:disabled {
   to { background-position-x: -240%; }
 }
 
+/* Today Pokémon */
+.today-shell {
+  padding-block: 1.5rem 4rem;
+}
+
+.today-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(32rem, 1.1fr);
+  gap: 1rem;
+  align-items: stretch;
+  padding: 1rem;
+  color: #ffffff;
+  background: linear-gradient(145deg, var(--pokedex-red-light), var(--pokedex-red) 52%, var(--pokedex-red-dark));
+  border: 0.55rem solid var(--pokedex-red-dark);
+  border-radius: 1.8rem 1.8rem 1rem 1rem;
+  box-shadow: var(--shadow);
+}
+
+.today-intro {
+  display: flex;
+  min-height: 36rem;
+  padding: clamp(1.5rem, 4vw, 3.5rem);
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(91, 8, 27, 0.32);
+  border: 0.5rem solid rgba(255, 255, 255, 0.2);
+  border-radius: 1.2rem 1.2rem 1.2rem 2.6rem;
+}
+
+.today-intro h1 {
+  max-width: 12ch;
+  margin: 0.35rem 0 1rem;
+  font-size: clamp(2.6rem, 5vw, 5.3rem);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+  text-wrap: balance;
+}
+
+.today-intro > p:not(.eyebrow) {
+  max-width: 38rem;
+  color: #fff1f3;
+  font-size: 1.05rem;
+}
+
+.today-stability-note {
+  padding: 0.8rem 1rem;
+  margin: 1.2rem 0 0;
+  background: rgba(65, 7, 20, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-sm);
+}
+
+.today-form {
+  padding: clamp(1.2rem, 2vw, 2rem);
+  color: var(--text);
+  border: 0.5rem solid var(--bezel);
+  border-radius: 1.2rem 1.2rem 2.6rem 1.2rem;
+}
+
+.today-form fieldset {
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.today-form legend {
+  font-size: 1.45rem;
+  font-weight: 900;
+}
+
+.today-form fieldset > p {
+  margin: 0.25rem 0 1rem;
+  color: var(--muted);
+}
+
+.zodiac-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.zodiac-choice {
+  position: relative;
+  display: grid;
+  min-height: 7.1rem;
+  padding: 0.8rem 0.45rem;
+  place-items: center;
+  align-content: center;
+  color: var(--text);
+  background: var(--screen);
+  border: 2px solid var(--line);
+  border-radius: 0.8rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.zodiac-choice:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.zodiac-choice:has(input:checked) {
+  color: #ffffff;
+  background: linear-gradient(145deg, var(--accent), var(--accent-dark));
+  border-color: var(--accent-dark);
+  box-shadow: 0 0 0 3px rgba(217, 35, 62, 0.18);
+}
+
+.zodiac-choice:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.zodiac-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.zodiac-choice > span {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.zodiac-choice strong {
+  font-size: 1rem;
+}
+
+.zodiac-choice small {
+  color: var(--muted);
+}
+
+.zodiac-choice:has(input:checked) small {
+  color: #ffe8ec;
+}
+
+.today-submit {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.today-entertainment-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.today-results {
+  padding-top: 2rem;
+  scroll-margin-top: 7rem;
+}
+
+.today-results[hidden] {
+  display: none;
+}
+
+#today-result-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.today-calendar-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.today-calendar-item {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  background: var(--screen-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.today-calendar-item span {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.today-calendar-item strong {
+  overflow-wrap: anywhere;
+}
+
+.today-match-card {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.72fr) minmax(0, 1.28fr);
+  gap: clamp(1.2rem, 4vw, 3rem);
+  align-items: center;
+  padding: clamp(1.2rem, 3vw, 2.4rem);
+  border: 0.45rem solid var(--bezel);
+}
+
+.today-match-visual {
+  position: relative;
+  display: grid;
+  min-height: 23rem;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 44%, #ffffff 0 18%, var(--screen) 19% 54%, var(--screen-deep) 55%);
+  border: 1px solid var(--line-strong);
+  border-radius: 1.25rem;
+}
+
+.today-match-visual::before,
+.today-match-visual::after {
+  position: absolute;
+  width: 18rem;
+  aspect-ratio: 1;
+  content: "";
+  border: 1.8rem solid rgba(42, 71, 50, 0.08);
+  border-radius: 50%;
+}
+
+.today-match-visual::after {
+  width: 3.2rem;
+  background: var(--screen);
+  border-width: 0.8rem;
+}
+
+.today-pokemon-image {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: min(82%, 20rem);
+  aspect-ratio: 1;
+  place-items: center;
+}
+
+.today-pokemon-image img {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1.1rem 1.1rem rgba(32, 57, 39, 0.2));
+}
+
+.today-zodiac-badge {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.8rem;
+  z-index: 3;
+  padding: 0.55rem 0.8rem;
+  color: #ffffff;
+  background: var(--accent-dark);
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.today-match-copy h3 {
+  margin: 0.15rem 0 0;
+  font-size: clamp(2.4rem, 6vw, 4.7rem);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.today-match-copy h4 {
+  margin: 1.25rem 0 0.55rem;
+  font-size: 1.1rem;
+}
+
+.today-match-copy .english-name {
+  margin: 0.3rem 0 0.8rem;
+}
+
+.today-chip-list {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.today-chip {
+  padding: 0.38rem 0.65rem;
+  color: var(--accent-dark);
+  background: #fff0f2;
+  border: 1px solid #eca2ae;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.calendar-chips {
+  margin-top: 0.5rem;
+}
+
+.calendar-chips .today-chip {
+  color: var(--signal-ink);
+  background: #fff8d8;
+  border-color: #dec468;
+}
+
+.today-explanation {
+  padding: 1rem;
+  margin: 1rem 0;
+  background: var(--screen-deep);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.today-explanation p {
+  margin: 0.65rem 0 0;
+  line-height: 1.8;
+}
+
+.today-section-heading {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.today-section-heading h3,
+.today-section-heading h4 {
+  margin: 0;
+}
+
+.today-grounded-badge,
+.today-entertainment-badge {
+  flex: 0 0 auto;
+  padding: 0.38rem 0.65rem;
+  color: #ffffff;
+  background: var(--success);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.today-entertainment-badge {
+  color: var(--signal-ink);
+  background: var(--signal);
+}
+
+.today-evidence,
+.today-fortune {
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.today-evidence h3,
+.today-fortune h3 {
+  margin: 0;
+}
+
+.today-evidence-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.today-evidence-item {
+  padding: 1rem;
+  background: var(--screen-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.today-evidence-item span {
+  color: var(--accent-dark);
+  font-size: 0.875rem;
+  font-weight: 900;
+}
+
+.today-evidence-item p {
+  margin: 0.4rem 0 0;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.fortune-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.fortune-card {
+  padding: 1rem;
+  text-align: center;
+  background: var(--screen-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.fortune-card h4,
+.fortune-card p {
+  margin: 0;
+}
+
+.fortune-stars {
+  margin-top: 0.45rem !important;
+  color: #c67a00;
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.fortune-card > strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.today-guidance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.today-guidance-item {
+  padding: 1rem;
+  background: #fffaf0;
+  border-left: 3px solid var(--signal);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.today-guidance-item p {
+  margin: 0.35rem 0 0;
+}
+
+.today-disclaimer {
+  padding-top: 1rem;
+  margin: 1rem 0 0;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
 @media (max-width: 68rem) {
   .filter-form {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2144,6 +2578,18 @@ button:disabled {
   .recommendation-card.primary-result .recommendation-image {
     width: 6.5rem;
   }
+
+  .today-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .today-intro {
+    min-height: 0;
+  }
+
+  .zodiac-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 48rem) {
@@ -2166,7 +2612,7 @@ button:disabled {
 
   .brand small,
   .brand::after,
-  .site-nav a:last-child {
+  .site-nav .nav-api {
     display: none;
   }
 
@@ -2268,6 +2714,24 @@ button:disabled {
   .detail-heading {
     border-width: 0.42rem;
   }
+
+  .zodiac-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .today-calendar-panel,
+  .fortune-grid,
+  .today-guidance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-match-card {
+    grid-template-columns: 1fr;
+  }
+
+  .today-match-visual {
+    min-height: 20rem;
+  }
 }
 
 @media (max-width: 34rem) {
@@ -2350,6 +2814,41 @@ button:disabled {
   .evidence-metadata,
   .index-source-list li {
     grid-template-columns: 1fr;
+  }
+
+  .today-hero {
+    padding: 0.65rem;
+    border-width: 0.4rem;
+  }
+
+  .today-intro,
+  .today-form {
+    padding: 1rem;
+    border-width: 0.35rem;
+  }
+
+  .today-intro h1 {
+    font-size: clamp(2.1rem, 11vw, 3.2rem);
+  }
+
+  .zodiac-grid,
+  .today-calendar-panel,
+  .fortune-grid,
+  .today-guidance {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .today-match-card {
+    padding: 0.85rem;
+  }
+
+  .today-match-copy h3 {
+    font-size: clamp(2.2rem, 13vw, 3.5rem);
+  }
+
+  .today-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

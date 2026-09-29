@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="選擇你的星座，結合台北今日國農曆、節氣、時辰與寶可夢圖鑑，找出今日代表寶可夢。">
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="/static/css/app.css?v=20260929-4">
+  <script src="/static/js/today_pokemon.js?v=20260929-1" defer></script>
+</head>
+<body data-page="today-pokemon" data-theme="pokedex">
+  <a class="skip-link" href="#today-form">跳到星座選擇</a>
+
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="寶可夢人格推薦首頁">
+      <span class="brand-mark" aria-hidden="true"><span></span></span>
+      <span><strong>POKÉDEX</strong><small>人格推薦系統</small></span>
+    </a>
+    <nav class="site-nav" aria-label="主要導覽">
+      <a href="/">人格推薦</a>
+      <a href="/today" aria-current="page">今日寶可夢</a>
+      <a href="/pokemon">圖鑑</a>
+      <a class="nav-api" href="/docs">API 文件</a>
+    </nav>
+  </header>
+
+  <main class="page-shell today-shell">
+    <section class="today-hero" aria-labelledby="today-title">
+      <div class="today-intro">
+        <p class="eyebrow">TAIPEI CALENDAR / DAILY MATCH</p>
+        <h1 id="today-title">今天，哪一隻寶可夢與你同行？</h1>
+        <p>選擇你的西洋星座。系統會把台北今天的國曆、農曆、節氣與傳統時辰轉成人格訊號，再從圖鑑中找出此刻的代表寶可夢。</p>
+        <div class="signal-list" aria-label="今日匹配方法">
+          <span>西洋十二星座</span>
+          <span>國農曆與節氣</span>
+          <span>傳統十二時辰</span>
+        </div>
+        <p class="today-stability-note">同一星座在同一日期與時辰內，選角及四面向運勢固定不變。</p>
+      </div>
+
+      <form id="today-form" class="today-form card">
+        <fieldset>
+          <legend>選擇你的星座</legend>
+          <p>不需要輸入生日，也不會保存你的選擇。</p>
+          <div class="zodiac-grid">
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="aries"><span aria-hidden="true">♈</span><strong>牡羊</strong><small>3/21–4/19</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="taurus"><span aria-hidden="true">♉</span><strong>金牛</strong><small>4/20–5/20</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="gemini"><span aria-hidden="true">♊</span><strong>雙子</strong><small>5/21–6/20</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="cancer"><span aria-hidden="true">♋</span><strong>巨蟹</strong><small>6/21–7/22</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="leo"><span aria-hidden="true">♌</span><strong>獅子</strong><small>7/23–8/22</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="virgo"><span aria-hidden="true">♍</span><strong>處女</strong><small>8/23–9/22</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="libra"><span aria-hidden="true">♎</span><strong>天秤</strong><small>9/23–10/22</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="scorpio"><span aria-hidden="true">♏</span><strong>天蠍</strong><small>10/23–11/21</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="sagittarius"><span aria-hidden="true">♐</span><strong>射手</strong><small>11/22–12/21</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="capricorn"><span aria-hidden="true">♑</span><strong>摩羯</strong><small>12/22–1/19</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="aquarius"><span aria-hidden="true">♒</span><strong>水瓶</strong><small>1/20–2/18</small></label>
+            <label class="zodiac-choice"><input type="radio" name="zodiac" value="pisces"><span aria-hidden="true">♓</span><strong>雙魚</strong><small>2/19–3/20</small></label>
+          </div>
+        </fieldset>
+        <button id="today-submit" class="button button-primary today-submit" type="submit" disabled>
+          <span>揭曉今日寶可夢</span><span aria-hidden="true">→</span>
+        </button>
+        <p class="today-entertainment-note">星座與運勢內容僅供娛樂與自我反思，不構成任何專業建議。</p>
+      </form>
+    </section>
+
+    <section id="today-loading" class="recommendation-state" role="status" aria-live="polite" hidden>
+      <span class="recommendation-spinner" aria-hidden="true"></span>
+      <div><h2>正在讀取今天的星象節奏</h2><p>系統正比對國農曆、時辰人格訊號與圖鑑證據。</p></div>
+    </section>
+
+    <section id="today-error" class="state-panel state-error" role="alert" hidden>
+      <span class="state-icon" aria-hidden="true">!</span>
+      <h2>暫時無法產生今日寶可夢</h2>
+      <p id="today-error-message">請稍後再試。</p>
+      <button id="today-retry" class="button button-primary" type="button">重新產生</button>
+    </section>
+
+    <section id="today-results" class="today-results" aria-labelledby="today-results-title" tabindex="-1" hidden>
+      <div class="results-header">
+        <div><p class="eyebrow">YOUR POKÉMON TODAY</p><h2 id="today-results-title">此刻的代表寶可夢</h2></div>
+        <p id="today-validity" class="result-count"></p>
+      </div>
+      <div id="today-result-content" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>Pokémon Personality Recommender</span>
+    <span>今日結果採台北時間，星座與運勢內容僅供娛樂</span>
+  </footer>
+</body>
+</html>
