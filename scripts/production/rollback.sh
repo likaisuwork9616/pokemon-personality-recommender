@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+: "${PUBLIC_DOMAIN:?Set PUBLIC_DOMAIN}"
+: "${POKEMON_ARTWORK_BASE_URL:?Set POKEMON_ARTWORK_BASE_URL}"
+
 repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 compose_file="${repository_root}/compose.production.yml"
 state_root="${POKEMON_DEPLOY_STATE_DIR:-${HOME}/.local/state/pokemon-recommender}"

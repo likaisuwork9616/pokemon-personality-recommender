@@ -15,6 +15,10 @@ Environment variables:
 | `POSTGRES_DB` | `pokemon` |
 | `POSTGRES_USER` | `pokemon` |
 | `ALERTMANAGER_CONFIG_FILE` | `/etc/pokemon-recommender/alertmanager.yml` |
+| `POKEMON_ARTWORK_BASE_URL` | `https://cdn.example.com/images/pokemon/artwork` |
+| `POKEMON_BACKUP_DIR` | `/var/backups/pokemon-recommender` |
+| `POKEMON_DEPLOY_STATE_DIR` | `/var/lib/pokemon-recommender/deploy-state` |
+| `BACKUP_RETENTION_DAYS` | `30` |
 
 Environment secrets:
 
@@ -28,7 +32,7 @@ The runner account must be able to run Docker and write to the chosen `POKEMON_B
 
 ## Release
 
-Push an annotated version tag or manually run `Release production image`. The workflow:
+Push a `v*` version tag or manually run `Release production image`. The workflow:
 
 1. builds one image and pushes it to GHCR;
 2. deploys the immutable digest rather than a mutable tag;
@@ -42,11 +46,16 @@ Database migrations must remain backward-compatible with the immediately previou
 
 ## Manual validation
 
-Copy `.env.production.example` to a secret file outside the repository, fill it, then run:
+Copy `.env.production.example` to a trusted, shell-compatible secret file outside
+the repository and fill it. Load it into the current shell so the deployment,
+backup, rollback and restore scripts all receive the same configuration:
 
 ```bash
-docker compose --env-file /secure/path/pokemon.env \
-  -f compose.production.yml config --quiet
+set -a
+. /secure/path/pokemon.env
+set +a
+
+docker compose -f compose.production.yml config --quiet
 
 python scripts/production/smoke_test.py \
   --base-url https://pokemon.example.com
@@ -145,6 +154,11 @@ This stops and removes the temporary containers and network but preserves the
 project's database, model and Caddy named volumes for a reproducible rerun.
 
 ## Backup, rollback and restore
+
+The commands in this section assume the production environment file has already
+been loaded into the current shell as shown under Manual validation. Passing
+`--env-file` to one Compose command does not export those values to the shell
+scripts that run later.
 
 Create an on-demand PostgreSQL custom-format backup:
 

@@ -7,7 +7,8 @@ route:
   repeat_interval: 4h
 
 # Copy this file outside the repository, replace the URL with an operator-owned
-# secret webhook, chmod it 0600, and point ALERTMANAGER_CONFIG_FILE at the copy.
+# secret webhook, set owner/group to root:65534 and mode to 0640, then point
+# ALERTMANAGER_CONFIG_FILE at the copy. The pinned container runs as 65534:65534.
 receivers:
   - name: operator-webhook
     webhook_configs:
