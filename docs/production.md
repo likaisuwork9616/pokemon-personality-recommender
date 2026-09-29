@@ -61,6 +61,12 @@ Create an on-demand PostgreSQL custom-format backup:
 sh scripts/production/backup_postgres.sh
 ```
 
+The backup is written with a private umask to a temporary path, validated with
+`pg_restore --list`, checksummed, and then atomically renamed. The checksum
+contains only the dump basename, so the pair remains verifiable after an
+off-host copy. `BACKUP_RETENTION_DAYS` defaults to 30 and only matching
+`pokemon-*.dump` files inside `POKEMON_BACKUP_DIR` are pruned.
+
 Roll back to the last successful immutable image:
 
 ```bash
@@ -75,7 +81,41 @@ sh scripts/production/restore_postgres.sh \
   --confirm-database-overwrite
 ```
 
-Regularly copy database backups off the host and test restoration on a disposable environment. Caddy certificate state, Prometheus history and Grafana state reside in named Docker volumes; include them in the host-level backup policy when their history matters.
+Restore refuses archives without a matching `.sha256` sidecar, checks the
+digest and archive table of contents before stopping writers, and uses one
+database transaction. A failed restore still restarts API, worker and Caddy.
+
+### Daily maintenance timer
+
+The checked-in systemd timer runs the verified backup and the 90-day anonymous
+feedback purge once per day. The sample unit assumes the checkout is
+`/srv/pokemon-recommender`, runs as the `pokemon` account, reads secrets from
+`/etc/pokemon-recommender/production.env`, and writes backups to
+`/var/backups/pokemon-recommender`. Change all four paths consistently when the
+host uses a different layout.
+
+```bash
+sudo install -d -o pokemon -g pokemon -m 0700 /var/backups/pokemon-recommender
+sudo install -m 0644 ops/systemd/pokemon-maintenance.service /etc/systemd/system/
+sudo install -m 0644 ops/systemd/pokemon-maintenance.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pokemon-maintenance.timer
+sudo systemctl list-timers pokemon-maintenance.timer
+```
+
+Run one supervised backup and verify the timer before relying on it:
+
+```bash
+sudo systemctl start pokemon-maintenance.service
+sudo systemctl status pokemon-maintenance.service
+sudo journalctl -u pokemon-maintenance.service --since today
+```
+
+The local timer does not protect against loss of the VPS. Copy each `.dump` and
+`.sha256` pair to a separately administered bucket or backup host, then run a
+quarterly restore drill on a disposable environment. Caddy certificate state,
+Prometheus history and Grafana state reside in named Docker volumes; include
+them in the host-level backup policy when their history matters.
 
 ## Feedback retention
 

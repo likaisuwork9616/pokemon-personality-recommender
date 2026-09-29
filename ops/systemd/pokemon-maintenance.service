@@ -1,0 +1,20 @@
+[Unit]
+Description=Pokémon recommender database backup and privacy maintenance
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pokemon
+Group=pokemon
+WorkingDirectory=/srv/pokemon-recommender
+EnvironmentFile=/etc/pokemon-recommender/production.env
+ExecStart=/bin/sh /srv/pokemon-recommender/scripts/production/maintenance.sh
+
+# The job needs Docker, the repository and its explicit backup directory only.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/pokemon-recommender /srv/pokemon-recommender

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Pokémon recommender maintenance every day
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=pokemon-maintenance.service
+
+[Install]
+WantedBy=timers.target
