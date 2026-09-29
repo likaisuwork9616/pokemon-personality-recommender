@@ -46,7 +46,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["recommendation_id"],
             ["recommendation_impressions.id"],
-            name="fk_recommendation_impression_items_recommendation_id_recommendation_impressions",
+            name="fk_rec_items_recommendation",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(

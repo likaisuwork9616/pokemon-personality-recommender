@@ -1,3 +1,4 @@
+import ast
 import unittest
 from pathlib import Path
 
@@ -285,6 +286,21 @@ class CoreSchemaTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('down_revision: str | None = "20260929_0009"', revision)
         self.assertNotIn("query_text", revision)
+
+    def test_explicit_migration_identifiers_fit_postgresql_limit(self):
+        oversized: list[tuple[str, str]] = []
+        for path in (ROOT / "alembic" / "versions").glob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.keyword) or node.arg != "name":
+                    continue
+                if not isinstance(node.value, ast.Constant):
+                    continue
+                value = node.value.value
+                if isinstance(value, str) and len(value) > 63:
+                    oversized.append((path.name, value))
+
+        self.assertEqual(oversized, [])
 
 
 if __name__ == "__main__":
