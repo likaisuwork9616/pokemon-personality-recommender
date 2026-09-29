@@ -25,6 +25,24 @@ pk_pic/*.png
 
 目前公開設定預設使用本專案的 CloudFront artwork 目錄，因此 fork 或 clone 後啟動的環境也會向該 distribution 請求圖片。若不打算承擔第三方流量，公開前應改成自己的 CDN URL 或空白設定，並在 AWS 設定費用預算與告警。
 
+## 來源與 delivery 稽核
+
+公開前及每次更換圖片批次後執行：
+
+~~~bash
+python scripts/audit_artwork_delivery.py
+~~~
+
+工具會重新計算 1,025 張本機 PNG 的 SHA-256、確認來源 URL 全部屬於 `tw.portal-pokemon.com`、核對 S3／CloudFront 驗證紀錄，並從整批資料中等距抽樣五張線上圖片，比對內容類型與實際 SHA-256。只檢查本機紀錄時可使用：
+
+~~~bash
+python scripts/audit_artwork_delivery.py --offline
+~~~
+
+這項稽核證明的是來源鏈與 delivery 完整性，不代表已取得著作權授權。公開頁面必須保留非官方、非商業與權利歸屬聲明；若用途改為商業、要移除聲明，或權利人提出要求，應先停止公開圖片並取得適當授權或改用明確允許再利用的素材。
+
+CloudFront 的實際 request 與傳輸量不可能從公開網址推算，必須登入擁有該 distribution 的 AWS account。登入後可在 CloudFront usage report 查看 Requests 與 Bytes out，或從 `us-east-1` 的 CloudWatch 讀取 `AWS/CloudFront` namespace 下的 `Requests` 與 `BytesDownloaded`；未能通過 `aws sts get-caller-identity` 時，不應聲稱已確認帳務流量。
+
 ## 命名契約
 
 每個全國圖鑑編號只保留一張 artwork，不包含 Mega 等共用圖鑑敘述的形態：

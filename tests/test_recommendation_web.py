@@ -109,6 +109,15 @@ class RecommendationWebTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('href="/">人格推薦</a>', response.text)
 
+    def test_every_page_displays_the_noncommercial_rights_disclaimer(self):
+        for path in ("/", "/today", "/pokemon", "/pokemon/1", "/admin"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("非官方、非商業的教育與作品集專案", response.text)
+                self.assertIn("The Pokémon Company 無關", response.text)
+                self.assertIn("相關圖像的權利均屬其各自權利人所有", response.text)
+
     def test_app_pages_share_light_green_pokedex_theme(self):
         for path in ("/", "/today", "/pokemon", "/pokemon/1", "/admin"):
             with self.subTest(path=path):
