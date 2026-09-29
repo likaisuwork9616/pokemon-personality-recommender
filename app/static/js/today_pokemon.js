@@ -41,17 +41,10 @@
     }
   };
 
-  const officialArtworkUrl = (value) => {
-    const number = Number(value);
-    if (!Number.isInteger(number) || number < 1 || number > 1025) return null;
-    return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${number}.png`;
-  };
-
   const pokemonImage = (pokemon) => {
     const shell = element("div", "today-pokemon-image");
     shell.append(element("span", "image-placeholder", "?"));
-    const fallback = officialArtworkUrl(pokemon.pokedex_number);
-    const source = safeImageUrl(pokemon.image_url) || fallback;
+    const source = safeImageUrl(pokemon.image_url);
     if (!source) return shell;
     const image = document.createElement("img");
     image.src = source;
@@ -59,13 +52,7 @@
     image.loading = "lazy";
     image.decoding = "async";
     image.referrerPolicy = "no-referrer";
-    image.addEventListener("error", () => {
-      if (fallback && image.src !== fallback) {
-        image.src = fallback;
-        return;
-      }
-      image.remove();
-    });
+    image.addEventListener("error", () => image.remove(), { once: true });
     shell.append(image);
     return shell;
   };
