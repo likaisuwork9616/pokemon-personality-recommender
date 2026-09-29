@@ -1,0 +1,210 @@
+name: pokemon-production
+
+x-app-image: &app-image ${APP_IMAGE:?Set APP_IMAGE to an immutable GHCR digest}
+x-database-url: &database-url "postgresql+psycopg://${POSTGRES_USER:-pokemon}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pokemon}"
+x-runtime-environment: &runtime-environment
+  DATABASE_URL: *database-url
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+  EMBEDDING_MODEL_VERSION: ${EMBEDDING_MODEL_VERSION:-default}
+  HF_HOME: /models/huggingface
+  HF_TOKEN: ${HF_TOKEN:-}
+  PYTHONUNBUFFERED: "1"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pokemon}
+      POSTGRES_USER: ${POSTGRES_USER:-pokemon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
+  migrate:
+    image: *app-image
+    pull_policy: always
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["maintenance"]
+    security_opt:
+      - no-new-privileges:true
+
+  seed:
+    image: *app-image
+    pull_policy: always
+    command: ["python", "scripts/import_pokemon.py"]
+    environment:
+      DATABASE_URL: *database-url
+      POKEMON_ARTWORK_BASE_URL: ${POKEMON_ARTWORK_BASE_URL:-https://d3s7iszk0n7xst.cloudfront.net/images/pokemon/artwork}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["maintenance"]
+    security_opt:
+      - no-new-privileges:true
+
+  embed:
+    image: *app-image
+    pull_policy: always
+    command: ["python", "scripts/rebuild_embeddings.py"]
+    environment:
+      <<: *runtime-environment
+    volumes:
+      - model_cache:/models
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["maintenance"]
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    image: *app-image
+    pull_policy: always
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    environment:
+      <<: *runtime-environment
+      PGVECTOR_SEARCH_MODE: ${PGVECTOR_SEARCH_MODE:-hnsw}
+      HNSW_EF_SEARCH: ${HNSW_EF_SEARCH:-100}
+      HNSW_ITERATIVE_SCAN: ${HNSW_ITERATIVE_SCAN:-strict_order}
+      READINESS_DB_TIMEOUT_SECONDS: ${READINESS_DB_TIMEOUT_SECONDS:-2}
+      CROSS_ENCODER_ENABLED: ${CROSS_ENCODER_ENABLED:-false}
+      CROSS_ENCODER_MODEL: ${CROSS_ENCODER_MODEL:-cross-encoder/mmarco-mMiniLMv2-L12-H384-v1}
+      CROSS_ENCODER_CANDIDATE_LIMIT: ${CROSS_ENCODER_CANDIDATE_LIMIT:-10}
+      CROSS_ENCODER_WEIGHT: ${CROSS_ENCODER_WEIGHT:-0.25}
+      CROSS_ENCODER_LATENCY_BUDGET_MS: ${CROSS_ENCODER_LATENCY_BUDGET_MS:-250}
+      CROSS_ENCODER_BATCH_SIZE: ${CROSS_ENCODER_BATCH_SIZE:-10}
+      CROSS_ENCODER_MAX_LENGTH: ${CROSS_ENCODER_MAX_LENGTH:-256}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-20}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_ACCOUNTS_JSON: ${ADMIN_ACCOUNTS_JSON:-}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?Set ADMIN_SESSION_SECRET}
+      ADMIN_COOKIE_SECURE: "true"
+      ADMIN_SESSION_TTL_SECONDS: ${ADMIN_SESSION_TTL_SECONDS:-28800}
+      HOME: /tmp
+    volumes:
+      - model_cache:/models
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    image: *app-image
+    pull_policy: always
+    restart: unless-stopped
+    command: ["python", "scripts/reindex_worker.py"]
+    environment:
+      <<: *runtime-environment
+      REINDEX_WORKER_POLL_SECONDS: ${REINDEX_WORKER_POLL_SECONDS:-2}
+      HOME: /tmp
+    volumes:
+      - model_cache:/models
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?Set PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./ops/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_DOMAIN: ${PUBLIC_DOMAIN:?Set PUBLIC_DOMAIN}
+    volumes:
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./ops/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
+  model_cache:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:

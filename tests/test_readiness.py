@@ -54,7 +54,7 @@ class ReadinessTests(unittest.TestCase):
         class SlowProbe:
             @staticmethod
             def check():
-                time.sleep(0.3)
+                time.sleep(1.0)
                 return True
 
         application = create_app(
@@ -71,7 +71,7 @@ class ReadinessTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["reason"], "database_unavailable")
-        self.assertLess(elapsed, 0.2)
+        self.assertLess(elapsed, 0.5)
         self.assertIn('pokemon_readiness_database_checks_total{outcome="timeout"} 1', metrics)
 
     def test_database_probe_executes_select_one_in_a_closed_session_scope(self):

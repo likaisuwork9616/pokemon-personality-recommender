@@ -48,6 +48,7 @@
 - **多層 AI 備援**：Gemini → OpenAI → 本地證據分析；任何 LLM 失敗都不影響原始排名。
 - **可重現環境**：Alembic、Docker Compose、seed、embedding worker、CI 與測試均納入專案。
 - **即時 Readiness**：每次 `/health/ready` 都以 bounded `SELECT 1` 驗證 PostgreSQL，並與 liveness 分離。
+- **Production Delivery**：版本標籤會建立 immutable GHCR image，透過受保護環境部署至 Caddy HTTPS，並執行備份、smoke test 與 image rollback。
 
 ---
 
@@ -162,7 +163,7 @@ evidence_id
 | Retrieval | pgvector、HNSW、Exact Cosine Search、PostgreSQL FTS、jieba、RRF、選配 Cross-Encoder |
 | Embedding | SentenceTransformers `paraphrase-multilingual-MiniLM-L12-v2` |
 | RAG | Google Gemini、OpenAI、結構化輸出、Citation Allowlist |
-| Operations | Docker Compose、背景 Reindex Worker、Prometheus 3.14、Grafana 13.2 |
+| Operations | Docker Compose、Caddy HTTPS、GHCR、背景 Reindex Worker、Prometheus 3.14、Grafana 13.2 |
 | Media Pipeline | Amazon S3、CloudFront、SHA-256 Manifest 驗證 |
 | Quality | unittest、GitHub Actions、20 題三級相關性離線評估、向量效能基準 |
 
@@ -375,7 +376,7 @@ python scripts/evaluate_cross_encoder.py
 
 ```text
 .
-├── .github/workflows/       # GitHub Actions CI
+├── .github/workflows/       # GitHub Actions CI 與正式版 Release
 ├── app/
 │   ├── api/                 # 公開與管理 REST API
 │   ├── data/                # 繁中 Metadata 對照表
@@ -387,12 +388,14 @@ python scripts/evaluate_cross_encoder.py
 │   ├── templates/           # Jinja2 頁面
 │   └── main.py              # FastAPI Application Factory
 ├── alembic/                 # 版本化 Schema Migrations
-├── docs/                    # 本機操作與 AWS 圖片流程
+├── docs/                    # 本機、正式環境與 AWS 圖片操作文件
 ├── evaluation/              # 20 題、1–3 級相關性的版本化離線標註集
 ├── pokemon_descript/        # 1,025 筆初始 Seed 資料
-├── scripts/                 # Import、Embedding、Worker、Evaluation、AWS 工具
+├── ops/                     # Caddy、Prometheus 與 Grafana 設定
+├── scripts/                 # Import、Embedding、Worker、Evaluation、部署與 AWS 工具
 ├── tests/                   # 單元、契約與 PostgreSQL 整合測試
 ├── Dockerfile
+├── compose.production.yml
 ├── docker-compose.yml
 ├── alembic.ini
 ├── requirements.txt
@@ -420,7 +423,7 @@ python scripts/evaluate_cross_encoder.py
 
 | 現況限制與目標 | 完成條件 |
 | --- | --- |
-| **P0 — 公開 HTTPS 與可回退部署**：目前完整環境仍以本機 Docker Compose 為主。 | 建立公開 HTTPS 環境、secret 管理、自動 migration、部署 smoke test、資料庫備份還原演練與一鍵 rollback。 |
+| **P0 — 啟用公開 HTTPS 主機**：immutable GHCR release、Caddy TLS、secret injection、migration、備份、smoke test 與 image rollback 已完成。 | 準備網域與 Linux 主機、設定受保護的 GitHub `production` Environment／runner，執行首次 release 並完成異地主機 restore drill。 |
 | **P1 — 擴大多人標註評估**：20 題能驗證流程，但不足以代表不同語氣與族群。 | 擴充至至少 100 題、兩位以上標註者，回報標註一致性與 personality／query-length slice metrics。 |
 | **P1 — 正式 SLO 與告警**：目前 metrics 保留於本機 `7d` Prometheus volume，尚未主動通知。 | 定義 availability、p95、5xx 與 readiness SLO，加入 alert rules、通知管道、長期 retention 與 dashboard runbook 連結。 |
 | **P1 — 帳號生命週期與 SSO**：管理帳號仍由環境變數提供。 | 串接 OIDC／企業 IdP，支援停權、角色變更、session 撤銷及相關 Audit Log。 |
@@ -433,6 +436,7 @@ python scripts/evaluate_cross_encoder.py
 ## 文件
 
 - [本機操作指南](docs/operations.md)
+- [正式環境部署、備份與回退](docs/production.md)
 - [AWS Artwork 發送流程](docs/aws-artwork.md)
 - [Swagger API 文件](http://localhost:8000/docs)（啟動服務後開啟）
 
