@@ -3,6 +3,7 @@ fastapi==0.141.1
 google-genai==2.22.0
 jieba==0.42.1
 Jinja2==3.1.6
+lunar_python==1.4.8
 numpy==2.5.2
 openai==3.8.0
 pandas==3.0.5
