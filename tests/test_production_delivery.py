@@ -47,6 +47,9 @@ class ProductionDeliveryTests(unittest.TestCase):
         restore = (ROOT / "scripts" / "production" / "restore_postgres.sh").read_text(
             encoding="utf-8"
         )
+        backup = (ROOT / "scripts" / "production" / "backup_postgres.sh").read_text(
+            encoding="utf-8"
+        )
         smoke = (ROOT / "scripts" / "production" / "smoke_test.py").read_text(
             encoding="utf-8"
         )
@@ -54,8 +57,33 @@ class ProductionDeliveryTests(unittest.TestCase):
         self.assertLess(deploy.index("backup_postgres.sh"), deploy.index("run --rm migrate"))
         self.assertIn("rollback.sh", deploy)
         self.assertIn("--confirm-database-overwrite", restore)
+        self.assertIn("sha256sum -c", restore)
+        self.assertIn("pg_restore --list", restore)
+        self.assertIn("--single-transaction", restore)
+        self.assertIn("trap restart_services", restore)
+        self.assertIn("umask 077", backup)
+        self.assertIn("pg_restore --list", backup)
+        self.assertIn("BACKUP_RETENTION_DAYS", backup)
+        self.assertIn(".tmp", backup)
         self.assertIn("Strict-Transport-Security", smoke)
         self.assertIn('"/health/ready"', smoke)
+
+    def test_daily_maintenance_timer_is_persistent_and_runs_bounded_tasks(self):
+        service = (ROOT / "ops" / "systemd" / "pokemon-maintenance.service").read_text(
+            encoding="utf-8"
+        )
+        timer = (ROOT / "ops" / "systemd" / "pokemon-maintenance.timer").read_text(
+            encoding="utf-8"
+        )
+        maintenance = (
+            ROOT / "scripts" / "production" / "maintenance.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("EnvironmentFile=/etc/pokemon-recommender/production.env", service)
+        self.assertIn("NoNewPrivileges=true", service)
+        self.assertIn("Persistent=true", timer)
+        self.assertIn("backup_postgres.sh", maintenance)
+        self.assertIn("run --rm feedback-purge", maintenance)
 
 
 if __name__ == "__main__":
