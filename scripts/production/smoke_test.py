@@ -22,13 +22,34 @@ def _check(base_url: str, path: str, *, timeout: float) -> tuple[dict[str, objec
         return payload, response.headers
 
 
+def _check_status(
+    base_url: str,
+    path: str,
+    *,
+    expected_status: int,
+    timeout: float,
+) -> None:
+    request = Request(urljoin(base_url.rstrip("/") + "/", path.lstrip("/")))
+    request.add_header("User-Agent", "pokemon-production-smoke/1")
+    context = ssl.create_default_context()
+    try:
+        with urlopen(request, timeout=timeout, context=context) as response:
+            status = response.status
+    except HTTPError as exc:
+        status = exc.code
+    if status != expected_status:
+        raise RuntimeError(
+            f"{path} returned HTTP {status}; expected {expected_status}"
+        )
+
+
 def verify(base_url: str, *, attempts: int, interval: float, timeout: float) -> None:
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
             live, live_headers = _check(base_url, "/health/live", timeout=timeout)
             ready, _ready_headers = _check(base_url, "/health/ready", timeout=timeout)
-            if live != {"status": "live"}:
+            if live != {"status": "ok"}:
                 raise RuntimeError("liveness response contract changed")
             if ready != {"status": "ready"}:
                 raise RuntimeError("readiness response contract changed")
@@ -37,6 +58,12 @@ def verify(base_url: str, *, attempts: int, interval: float, timeout: float) -> 
                     raise RuntimeError("HTTPS response is missing HSTS")
                 if live_headers.get("X-Content-Type-Options") != "nosniff":
                     raise RuntimeError("HTTPS response is missing nosniff")
+            _check_status(
+                base_url,
+                "/metrics",
+                expected_status=404,
+                timeout=timeout,
+            )
             return
         except (HTTPError, URLError, TimeoutError, ValueError, RuntimeError) as exc:
             last_error = exc

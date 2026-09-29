@@ -14,13 +14,13 @@ Environment variables:
 | `ACME_EMAIL` | `operator@example.com` |
 | `POSTGRES_DB` | `pokemon` |
 | `POSTGRES_USER` | `pokemon` |
+| `ALERTMANAGER_CONFIG_FILE` | `/etc/pokemon-recommender/alertmanager.yml` |
 
 Environment secrets:
 
 - `POSTGRES_PASSWORD`
 - `ADMIN_SESSION_SECRET` with at least 32 random characters
 - `GRAFANA_ADMIN_PASSWORD`
-- `ALERTMANAGER_CONFIG_FILE` pointing to a root-readable external receiver config
 - either `ADMIN_PASSWORD` or `ADMIN_ACCOUNTS_JSON`
 - optional `GEMINI_API_KEY`, `OPENAI_API_KEY`, and `HF_TOKEN`
 
@@ -53,6 +53,19 @@ python scripts/production/smoke_test.py \
 ```
 
 Prometheus, Grafana and Alertmanager bind only to loopback. Reach them through an SSH tunnel instead of exposing their ports publicly. Configure the receiver and cloud-account budgets using `docs/cost-controls.md` before enabling paid provider keys.
+
+The production Compose network is segmented: PostgreSQL is reachable only on
+the internal `data` network, monitoring uses the internal `observability`
+network, and only Caddy publishes public ports. Caddy has the fixed edge IP
+`172.30.250.2`, which is the only proxy Uvicorn trusts for forwarded client
+addresses. If that `/29` conflicts with a host network, change the edge subnet,
+Caddy `ipv4_address`, and `--forwarded-allow-ips` together before deployment.
+The public Caddy route returns `404` for `/metrics` while Prometheus continues
+to scrape it directly over the private observability network.
+Every deploy and rollback renders the final Compose JSON and runs
+`scripts/production/audit_compose_exposure.py`; deployment stops if a private
+service gains a host port, an operations port leaves loopback, network
+segmentation changes, or proxy trust becomes broad.
 
 ## Backup, rollback and restore
 

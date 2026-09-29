@@ -31,6 +31,8 @@ if [ -s "${current_file}" ]; then
 fi
 
 export APP_IMAGE="${rollback_image}"
+docker compose -f "${compose_file}" config --format json \
+    | python "${repository_root}/scripts/production/audit_compose_exposure.py"
 docker compose -f "${compose_file}" pull api worker
 docker compose -f "${compose_file}" up -d api worker caddy
 python "${repository_root}/scripts/production/smoke_test.py" \
