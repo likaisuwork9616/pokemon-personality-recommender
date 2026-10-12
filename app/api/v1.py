@@ -34,7 +34,7 @@ async def create_recommendation(payload: RecommendationRequest, request: Request
     engine = _engine(request)
     try:
         def run_recommendation() -> RecommendationResponse:
-            raw_results = engine.recommend(payload.text.strip(), top_k=3)
+            raw_results = engine.recommend(payload.text, top_k=3, mbti=payload.mbti)
             explanations: dict[int, dict[str, Any]] = {}
             if payload.generate_explanation:
                 top_result = raw_results[0]

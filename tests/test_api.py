@@ -9,8 +9,10 @@ from app.services.recommendation import RetrievalUnavailableError
 class FakeEngine:
     def __init__(self):
         self.explain_calls = 0
+        self.calls = []
 
-    def recommend(self, text, top_k=3):
+    def recommend(self, text, top_k=3, *, mbti=None):
+        self.calls.append((text, mbti))
         return [
             {
                 "rank": rank,
@@ -23,6 +25,7 @@ class FakeEngine:
                 "scores": {
                     "semantic": 0.8,
                     "personality": 0.7,
+                    "mbti": 0.6 if mbti else None,
                     "total": 0.75,
                 },
                 "matching_evidence": [
@@ -75,13 +78,30 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 3)
-        self.assertEqual(response.json()["algorithm_version"], "pgvector-fts-rrf-v1")
+        self.assertEqual(response.json()["algorithm_version"], "mbti-hybrid-v2")
         first = response.json()["results"][0]
         self.assertEqual(first["pokemon"]["id"], 1)
         self.assertEqual(first["evidence"][0]["evidence_id"], f"ev_{1:032x}")
         self.assertEqual(first["evidence"][0]["dense_rank"], 1)
         self.assertIsNone(first["evidence"][0]["lexical_rank"])
         self.assertEqual(self.engine.explain_calls, 0)
+        self.assertIsNone(first["scores"]["mbti"])
+        self.assertEqual(self.engine.calls, [("我重視朋友", None)])
+
+    def test_mbti_normalization_and_optional_empty_values(self):
+        for value, expected in ((" infp-t ", "INFP"), ("ｉｎｔｊ－ａ", "INTJ"), ("", None), ("  ", None), (None, None)):
+            with self.subTest(value=value):
+                response = self.client.post("/api/v1/recommendations", json={"text": " 我重視朋友 ", "mbti": value})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(self.engine.calls[-1], ("我重視朋友", expected))
+                self.assertEqual(response.json()["results"][0]["scores"]["mbti"], 0.6 if expected else None)
+
+    def test_invalid_mbti_and_whitespace_description_rejected_before_engine(self):
+        for payload in ({"text": "  "}, {"text": "我重視朋友", "mbti": "ABCD"}, {"text": "我重視朋友", "mbti": 123}, {"mbti": "INFP"}):
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/v1/recommendations", json=payload)
+                self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.engine.calls, [])
 
     def test_explanation_is_opt_in_and_runs_for_top_one_only(self):
         response = self.client.post(
