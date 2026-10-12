@@ -19,6 +19,8 @@ from app.services.recommendation import (
     HybridRecommendationEngine,
     RetrievalUnavailableError,
 )
+from app.services.mbti_catalog import get_mbti_catalog
+from app.services.mbti_scoring import MbtiScorer
 
 
 def _public_result(rank: int) -> dict[str, object]:
@@ -58,7 +60,7 @@ class _PublicEngine:
         self.explain_calls = 0
 
     @staticmethod
-    def recommend(_text, top_k=3):
+    def recommend(_text, top_k=3, *, mbti=None):
         return [_public_result(rank) for rank in range(1, top_k + 1)]
 
     def explain(self, _text, _pokemon):
@@ -108,7 +110,7 @@ class ApiPrivacyTests(unittest.TestCase):
 
         class BrokenEngine(_PublicEngine):
             @staticmethod
-            def recommend(text, top_k=3):
+            def recommend(text, top_k=3, *, mbti=None):
                 raise RetrievalUnavailableError("hybrid retrieval is unavailable")
 
         with TestClient(create_app(BrokenEngine)) as client:
@@ -249,10 +251,13 @@ class QueryPersistenceTests(unittest.TestCase):
 
         class Personality:
             @staticmethod
-            def vector_for_text(_text):
-                return np.zeros(16)
+            def load_profiles(_ids, **_kwargs):
+                return {}
 
         class Session:
+            def connection(self, **_kwargs):
+                return None
+
             def __enter__(self):
                 return self
 
@@ -264,7 +269,8 @@ class QueryPersistenceTests(unittest.TestCase):
             session_factory=Session,
             embedding_model_id=1,
             retrieval_service_factory=lambda _session: Retriever(),
-            personality_repository_factory=lambda _session: Personality(),
+            mbti_profile_repository_factory=lambda _session: Personality(),
+            mbti_scorer=MbtiScorer(get_mbti_catalog(), np.eye(16, 384)),
         )
 
         result = engine.recommend(marker)
