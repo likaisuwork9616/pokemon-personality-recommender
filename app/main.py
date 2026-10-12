@@ -38,9 +38,8 @@ def _default_engine_factory() -> Any:
     import pandas as pd
 
     from app.db.session import get_session_factory
+    from app.repositories.mbti_profiles import MbtiProfileRepository
     from app.repositories import (
-        PersonalityRepository,
-        PokemonRepository,
         VectorRepository,
     )
     from app.services.personality_profile import PokemonPersonalityProfile
@@ -49,12 +48,10 @@ def _default_engine_factory() -> Any:
 
     def load_profile_records() -> list[dict[str, object]]:
         with session_factory() as session:
-            return PokemonRepository(session).recommender_records()
+            return MbtiProfileRepository(session).metadata_records()
 
     records = load_profile_records()
     with session_factory() as session:
-        personality_catalog = PersonalityRepository(session).catalog()
-        personality_revision = PersonalityRepository(session).revision()
         vector_repository = VectorRepository(session)
         active_model = vector_repository.active_model()
         ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
@@ -74,8 +71,6 @@ def _default_engine_factory() -> Any:
 
     profile_engine = PokemonPersonalityProfile(
         dataframe=pd.DataFrame.from_records(records),
-        personality_traits=personality_catalog.trait_names,
-        persona_keywords=personality_catalog.synonyms_by_trait,
     )
     return HybridRecommendationEngine(
         profile_engine=profile_engine,
@@ -83,7 +78,6 @@ def _default_engine_factory() -> Any:
         embedding_model_id=active_model.id,
         explanation_service=GroundedExplanationService.from_env(),
         profile_records_loader=load_profile_records,
-        personality_revision=personality_revision,
     )
 
 def create_app(
