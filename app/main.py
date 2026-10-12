@@ -50,9 +50,8 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
     import pandas as pd
 
     from app.db.session import get_session_factory
+    from app.repositories.mbti_profiles import MbtiProfileRepository
     from app.repositories import (
-        PersonalityRepository,
-        PokemonRepository,
         VectorRepository,
     )
     from app.services.personality_profile import PokemonPersonalityProfile
@@ -61,16 +60,10 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
 
     def load_profile_records() -> list[dict[str, object]]:
         with session_factory() as session:
-            return PokemonRepository(session).recommender_records()
+            return MbtiProfileRepository(session).metadata_records()
 
     records = load_profile_records()
     with session_factory() as session:
-        personality_repository = PersonalityRepository(session)
-        personality_catalog = personality_repository.catalog()
-        personality_revision = personality_repository.revision()
-        personality_trait_codes = tuple(
-            trait.code for trait in personality_repository.public_catalog().traits
-        )
         vector_repository = VectorRepository(session)
         active_model = vector_repository.active_model()
         ready_pokemon = vector_repository.ready_pokemon_count(active_model.id)
@@ -90,8 +83,6 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
 
     profile_engine = PokemonPersonalityProfile(
         dataframe=pd.DataFrame.from_records(records),
-        personality_traits=personality_catalog.trait_names,
-        persona_keywords=personality_catalog.synonyms_by_trait,
     )
     reranker_config = CrossEncoderConfig.from_env()
     return HybridRecommendationEngine(
@@ -106,14 +97,12 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
             )
         ),
         profile_records_loader=load_profile_records,
-        personality_revision=personality_revision,
         reranker=(
             CrossEncoderReranker(reranker_config)
             if reranker_config.enabled
             else None
         ),
         database_readiness_probe=DatabaseReadinessProbe(session_factory),
-        personality_trait_codes=personality_trait_codes,
     )
 
 def create_app(

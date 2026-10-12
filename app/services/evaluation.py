@@ -27,6 +27,8 @@ def _percentile(values: list[float], fraction: float) -> float:
     weight = position - lower
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
+from app.services.mbti_catalog import normalize_mbti
+
 
 @dataclass(frozen=True)
 class EvaluationCase:
@@ -34,7 +36,10 @@ class EvaluationCase:
     query: str
     relevance_judgments: Mapping[int, int] | Iterable[int]
 
+    mbti: str | None = None
+
     def __post_init__(self) -> None:
+        object.__setattr__(self, "mbti", normalize_mbti(self.mbti))
         raw = self.relevance_judgments
         judgments = (
             {int(number): int(grade) for number, grade in raw.items()}
@@ -86,7 +91,7 @@ def evaluate_recommendations(engine: Any, cases: Iterable[EvaluationCase], *, re
         if not case.case_id or not case.query.strip() or not case.relevance_judgments:
             raise ValueError("every evaluation case needs an id, query and relevance labels")
         started = perf_counter()
-        results = engine.recommend(case.query, top_k=retrieval_k)
+        results = engine.recommend(case.query, top_k=retrieval_k, mbti=case.mbti)
         latencies.append((perf_counter() - started) * 1000.0)
         ranked = [int(item["pokedex_number"]) for item in results]
         top3 = ranked[:3]

@@ -906,6 +906,33 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.mbti-field {
+  margin-top: 1rem;
+}
+
+.mbti-field small {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.mbti-help,
+.mbti-error {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+.mbti-error {
+  color: var(--danger);
+}
+
+.mbti-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .privacy-note {
   margin: 0.85rem 0;
   color: var(--muted);
@@ -952,6 +979,11 @@ button:disabled {
   border-radius: 999px;
   font-size: 0.875rem;
   font-weight: 800;
+}
+
+.public-trait-source {
+  flex: 0 1 auto;
+  overflow-wrap: anywhere;
 }
 
 .public-trait-intro,
@@ -1016,6 +1048,13 @@ button:disabled {
 
 .public-trait-preview {
   margin-top: 0.8rem;
+}
+
+.public-trait-summary {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.75;
 }
 
 .public-weighted-term {
@@ -1091,12 +1130,49 @@ button:disabled {
   background: var(--focus);
   border-radius: 999px;
   font-size: 0.875rem;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
-.public-type-weight-badge.is-error {
-  background: var(--danger);
+.public-trait-details h4,
+.public-trait-styles dt {
+  margin: 0.8rem 0 0.3rem;
+  color: var(--accent-dark);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.public-trait-styles,
+.public-trait-styles dd {
+  margin: 0;
+}
+
+.public-trait-styles dd,
+.public-trait-list,
+.public-trait-reviewed {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.public-trait-list {
+  padding-left: 1.1rem;
+  margin: 0;
+}
+
+.public-trait-sources a {
+  color: var(--focus);
+}
+
+.public-trait-reviewed {
+  margin-bottom: 0;
+}
+
+#admin-mbti-sources {
+  overflow-wrap: anywhere;
+}
+
+#admin-mbti-status {
+  margin: 0.75rem 0;
 }
 
 .recommendation-state {
@@ -1319,6 +1395,13 @@ button:disabled {
 
 .score-total .score-track span {
   background: linear-gradient(90deg, var(--accent), var(--signal));
+}
+
+.score-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.65;
 }
 
 .explanation-card {
@@ -1646,7 +1729,7 @@ button:disabled {
   color: #688372;
   border: 2px solid #8baa92;
   border-radius: 50%;
-  font-size: 2rem;
+  font-size: 2.0rem;
   font-weight: 900;
 }
 
@@ -2701,9 +2784,9 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .public-type-weight-note {
-    align-items: flex-start;
+  .public-trait-heading {
     flex-direction: column;
+    gap: 0.5rem;
   }
 
   .recommendation-alternatives-grid {
@@ -2753,6 +2836,21 @@ button:disabled {
 
   .site-nav a {
     padding-inline: 0.55rem;
+  }
+
+  body[data-page="admin"] .site-header {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  body[data-page="admin"] .site-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  body[data-page="admin"] .site-nav a,
+  body[data-page="admin"] .site-nav button {
+    white-space: nowrap;
   }
 
   .recommendation-shell {

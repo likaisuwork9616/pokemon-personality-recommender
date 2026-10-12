@@ -8,12 +8,13 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.observability import RequestMetrics
+from tests.test_api import FakeEngine
 
 
 class _Engine:
     @staticmethod
-    def recommend(_text, top_k=3):
-        return []
+    def recommend(text, top_k=3, *, mbti=None):
+        return FakeEngine().recommend(text, top_k=top_k, mbti=mbti)
 
 
 class ObservabilityTests(unittest.TestCase):

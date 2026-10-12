@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="管理寶可夢圖鑑資料、啟用狀態與檢索來源。">
   <title>{{ page_title }}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=20260929-4">
-  <script src="/static/js/admin.js?v=20260929-3" defer></script>
+  <link rel="stylesheet" href="/static/css/app.css?v=20261012-mbti1">
+  <script src="/static/js/admin.js?v=20261012-mbti1" defer></script>
 </head>
 <body data-page="admin" data-theme="pokedex">
   <a class="skip-link" href="#admin-main">跳到管理內容</a>
@@ -106,32 +106,29 @@
         </section>
       </div>
 
-      <section class="card vocabulary-panel" aria-labelledby="vocabulary-title">
+      <section class="card vocabulary-panel" aria-labelledby="admin-mbti-title">
         <div class="panel-heading">
           <div>
-            <p class="eyebrow">PERSONALITY DICTIONARY</p>
-            <h2 id="vocabulary-title">人格詞庫管理</h2>
+            <p class="eyebrow">MBTI REFERENCE</p>
+            <h2 id="admin-mbti-title">16 型 MBTI 詳細介紹（唯讀）</h2>
           </div>
-          <select id="vocabulary-trait-select" aria-label="選擇人格特質"></select>
+          <button id="admin-mbti-reload" class="button button-ghost" type="button">重新載入介紹</button>
         </div>
-        <form id="vocabulary-trait-form" class="vocabulary-trait-form">
-          <label class="field"><span>固定代碼</span><input id="vocabulary-trait-code" readonly></label>
-          <label class="field"><span>向量維度</span><input id="vocabulary-vector-index" readonly></label>
-          <label class="field"><span>繁中名稱</span><input id="vocabulary-trait-name" maxlength="40" required></label>
-          <button class="button button-ghost" type="submit">儲存特質名稱</button>
-        </form>
-        <form id="vocabulary-synonym-form" class="vocabulary-synonym-form">
-          <label class="field"><span>新增同義詞</span><input id="vocabulary-new-term" maxlength="80" required></label>
-          <label class="field"><span>語言</span><input id="vocabulary-new-language" value="zh-Hant" maxlength="10" required></label>
-          <label class="field"><span>權重（大於 0，最高 5）</span><input id="vocabulary-new-weight" type="number" value="2" min="0.01" max="5" step="0.01" required></label>
-          <button class="button button-primary" type="submit">加入同義詞</button>
-        </form>
+        <p class="muted">介紹描述偏好傾向，個別經驗與自述仍有差異。寶可夢配對是娛樂性詮釋，本站不提供正式 MBTI 測評。</p>
+        <p id="admin-mbti-version" class="muted"></p>
+        <label class="field"><span>選擇 MBTI 類型</span><select id="admin-mbti-select" disabled aria-controls="admin-mbti-details"></select></label>
+        <p id="admin-mbti-status" class="status-line" role="status" aria-live="polite"></p>
+        <article id="admin-mbti-details" aria-live="polite"></article>
+        <h3>配對行為詞（唯讀）</h3>
         <div class="vocabulary-table-wrap">
           <table class="vocabulary-table">
-            <thead><tr><th>同義詞</th><th>語言</th><th>權重</th><th>狀態</th><th>操作</th></tr></thead>
-            <tbody id="vocabulary-synonyms"></tbody>
+            <caption>本站娛樂配對使用的相對權重，不是官方 MBTI 測評分數。</caption>
+            <thead><tr><th scope="col">行為詞</th><th scope="col">相對權重</th></tr></thead>
+            <tbody id="admin-mbti-terms"></tbody>
           </table>
         </div>
+        <h3>參考來源</h3>
+        <ul id="admin-mbti-sources"></ul>
       </section>
 
       <section class="card evaluation-panel" aria-labelledby="evaluation-title">

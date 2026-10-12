@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,27 @@ from app.main import create_app
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class FormContractParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fields: dict[str, dict[str, str | None]] = {}
+        self.mbti_options: list[str] = []
+        self.in_mbti_options = False
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag in {"input", "textarea"} and "id" in attributes:
+            self.fields[attributes["id"]] = attributes
+        if tag == "datalist" and attributes.get("id") == "mbti-options":
+            self.in_mbti_options = True
+        if tag == "option" and self.in_mbti_options:
+            self.mbti_options.append(attributes["value"])
+
+    def handle_endtag(self, tag):
+        if tag == "datalist":
+            self.in_mbti_options = False
 
 
 class RecommendationWebTests(unittest.TestCase):
@@ -37,14 +59,13 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260929-3', response.text)
-        self.assertIn('/static/css/app.css?v=20260929-4', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20261012-mbti1', response.text)
+        self.assertIn('/static/css/app.css?v=20261012-mbti1', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
-        self.assertIn("系統採用的人格特質", response.text)
-        self.assertIn('id="public-type-weight-status"', response.text)
-        self.assertIn("系統也有屬性參考權重", response.text)
-        self.assertIn("主屬性與副屬性", response.text)
-        self.assertNotIn('id="public-type-weight-grid"', response.text)
+        self.assertIn("MBTI 十六型人格", response.text)
+        self.assertIn("同一類型的人也會有不同個性", response.text)
+        self.assertNotIn("public-type-weight", response.text)
+        self.assertNotIn("PostgreSQL 人格詞庫", response.text)
         self.assertNotIn("data-example", response.text)
         self.assertNotIn("沉著守護型", response.text)
         self.assertNotIn("好奇冒險型", response.text)
@@ -59,19 +80,21 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('fetch("/api/v1/personality/traits"', source)
         self.assertIn("generate_explanation: true", source)
         self.assertIn("publicTraitGrid.replaceChildren", source)
-        self.assertIn("payload.type_profile_count", source)
-        self.assertNotIn("payload.type_profiles", source)
+        self.assertIn("payload.catalog_version", source)
+        self.assertNotIn("payload.type_profile_count", source)
+        self.assertNotIn("payload.type_weight_version", source)
         self.assertNotIn("[data-example]", source)
         self.assertNotIn("dataset.example", source)
         self.assertNotIn("explainToggle", source)
         self.assertNotIn("explanationPrompt", source)
         self.assertIn("payload.results.length !== 3", source)
-        self.assertIn("resultCard(payload.results[0], payload.recommendation_id)", source)
+        self.assertIn("resultCard(payload.results[0], mbti, payload.recommendation_id)", source)
         self.assertIn("alternativeResultCard(item, payload.recommendation_id)", source)
         self.assertIn("textContent", source)
         self.assertIn('"AI 契合分析"', source)
         self.assertIn('gemini: "Gemini 分析"', source)
-        self.assertIn("已融合人格、屬性權重與", source)
+        self.assertIn("已比對個性描述", source)
+        self.assertNotIn("屬性權重", source)
         self.assertNotIn("evidence.text", source)
         self.assertNotIn("Evidence ID", source)
         self.assertNotIn("Document ID", source)
@@ -101,6 +124,24 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("ranking", source)
         self.assertIn("unfamiliar", source)
         self.assertIn("匿名回饋只綁定收據 UUID、演算法版本與當次 Top 3", template)
+    def test_mbti_is_optional_and_has_all_sixteen_valid_choices(self):
+        response = self.client.get("/")
+        parser = FormContractParser()
+        parser.feed(response.text)
+
+        self.assertIn("required", parser.fields["personality-text"])
+        self.assertEqual(parser.fields["personality-text"]["minlength"], "2")
+        self.assertEqual(parser.fields["personality-text"]["maxlength"], "2000")
+        self.assertNotIn("required", parser.fields["mbti-type"])
+        self.assertEqual(parser.fields["mbti-type"]["list"], "mbti-options")
+        self.assertEqual(
+            set(parser.mbti_options),
+            {i + s + t + j for i in "IE" for s in "SN" for t in "TF" for j in "JP"},
+        )
+        self.assertEqual(len(parser.mbti_options), 16)
+        self.assertEqual(parser.fields["mbti-type"]["aria-describedby"], "mbti-help mbti-error")
+        self.assertIn('id="mbti-error" class="mbti-error" role="alert" hidden', response.text)
+        self.assertIn("A／T 不參與計分", response.text)
 
     def test_public_pages_link_back_to_recommendation(self):
         for path in ("/pokemon", "/pokemon/1", "/admin"):
@@ -124,7 +165,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260929-4', response.text)
+                self.assertIn('/static/css/app.css?v=20261012-mbti1', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -176,8 +217,6 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", trait_title_styles)
         self.assertIn("max-width: 100%", weighted_term_styles)
         self.assertIn("overflow-wrap: anywhere", weighted_term_text_styles)
-        self.assertIn(".public-type-weight-note", styles)
-        self.assertIn(".public-type-weight-badge", styles)
         self.assertIn(".recommendation-card.primary-result", styles)
         self.assertIn(".recommendation-alternatives-grid", styles)
         self.assertIn(".alternative-result-card", styles)
@@ -196,6 +235,35 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertGreaterEqual(min(pixel_sizes), 14)
         self.assertIn(".explanation-card p", styles)
         self.assertIn("font-size: 1rem", styles)
+    def test_mbti_cards_include_full_profiles_and_safe_research_sources(self):
+        source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        for field in (
+            "summary", "information_style", "decision_style", "interaction_style",
+            "action_style", "strengths", "blind_spots", "stress_pattern", "growth_tips",
+            "source_urls", "reviewed_at",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, source)
+        self.assertIn('element("details", "public-trait-details")', source)
+        self.assertIn('new URL(source)', source)
+        self.assertIn('["http:", "https:"].includes(url.protocol)', source)
+        self.assertIn('link.rel = "noopener noreferrer"', source)
+        self.assertIn('payload.traits.length !== 16', source)
+
+    def test_result_scores_keep_mbti_optional_and_explain_score_meaning(self):
+        source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('mbti && typeof result.scores.mbti === "number"', source)
+        self.assertIn('Number.isFinite(result.scores.mbti)', source)
+        self.assertIn('MBTI 輔助分（${mbti}）', source)
+        self.assertIn('scoreRow("總分", result.scores.total, true)', source)
+        self.assertIn('scoreRow("文字檢索分", result.scores.semantic)', source)
+        self.assertIn('scoreRow("人格分數", result.scores.personality)', source)
+        self.assertIn("不是 MBTI 測驗結果、機率或能力評分", source)
+        self.assertNotIn("推定類型", source)
 
     def test_primary_and_alternative_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
@@ -226,7 +294,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260929-4", response.text)
+        self.assertIn("/static/css/app.css?v=20261012-mbti1", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
