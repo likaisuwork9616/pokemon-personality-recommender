@@ -19,7 +19,6 @@
   const publicTraitGrid = document.querySelector("#public-trait-grid");
   const publicTraitStatus = document.querySelector("#public-trait-status");
   const publicTraitRevision = document.querySelector("#public-trait-revision");
-  const publicTypeWeightStatus = document.querySelector("#public-type-weight-status");
   let activeController = null;
 
   const element = (tagName, className, content) => {
@@ -236,23 +235,63 @@
     const card = element("article", "public-trait-card");
     const heading = element("div", "public-trait-card-heading");
     heading.append(
-      element("h3", "", trait.name_zh || "未命名特質"),
-      element("span", "", `${terms.length} 個加權詞`),
+      element("h3", "", trait.name_zh || trait.code),
+      element("span", "", trait.code),
     );
 
     const preview = element("div", "public-trait-preview");
     preview.append(...terms.slice(0, 3).map(weightedTerm));
-    card.append(heading, preview);
+    card.append(heading, element("p", "public-trait-summary", trait.summary), preview);
 
-    if (terms.length > 3) {
-      const details = document.createElement("details");
-      details.className = "public-trait-details";
-      details.append(element("summary", "", "查看全部詞彙權重"));
-      const allTerms = element("div", "public-trait-terms");
-      allTerms.append(...terms.map(weightedTerm));
-      details.append(allTerms);
-      card.append(details);
+    const details = element("details", "public-trait-details");
+    details.append(element("summary", "", "展開個性、優勢與成長建議"));
+    const styles = element("dl", "public-trait-styles");
+    for (const [label, field] of [
+      ["資訊處理", "information_style"],
+      ["決策方式", "decision_style"],
+      ["人際互動", "interaction_style"],
+      ["行動節奏", "action_style"],
+      ["壓力反應", "stress_pattern"],
+    ]) {
+      styles.append(element("dt", "", label), element("dd", "", trait[field] || "未提供"));
     }
+    details.append(styles);
+    for (const [label, field] of [
+      ["優勢", "strengths"],
+      ["可能盲點", "blind_spots"],
+      ["成長建議", "growth_tips"],
+    ]) {
+      const list = element("ul", "public-trait-list");
+      const items = Array.isArray(trait[field]) ? trait[field] : [];
+      list.append(...items.map((item) => element("li", "", item)));
+      details.append(element("h4", "", label), list);
+    }
+    const allTerms = element("div", "public-trait-terms");
+    allTerms.append(...terms.map(weightedTerm));
+    details.append(element("h4", "", "配對行為參考詞"), allTerms);
+
+    const sources = element("ul", "public-trait-list public-trait-sources");
+    for (const source of Array.isArray(trait.source_urls) ? trait.source_urls : []) {
+      try {
+        const url = new URL(source);
+        if (!["http:", "https:"].includes(url.protocol)) continue;
+        const link = element("a", "", url.hostname);
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        const item = element("li");
+        item.append(link);
+        sources.append(item);
+      } catch (_error) {
+        // Ignore malformed source addresses rather than creating unsafe links.
+      }
+    }
+    details.append(
+      element("h4", "", "研究來源"),
+      sources,
+      element("p", "public-trait-reviewed", `查證日期：${trait.reviewed_at || "未提供"}`),
+    );
+    card.append(details);
     return card;
   };
 
@@ -263,31 +302,25 @@
         headers: { Accept: "application/json" },
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload.traits) || payload.traits.length === 0) {
-        throw new Error("invalid personality vocabulary response");
+      if (
+        !response.ok
+        || !Array.isArray(payload.traits)
+        || payload.traits.length !== 16
+        || payload.traits.some((trait) => !/^[IE][SN][TF][JP]$/.test(trait.code))
+        || new Set(payload.traits.map((trait) => trait.code)).size !== 16
+      ) {
+        throw new Error("invalid MBTI catalog response");
       }
       publicTraitGrid.replaceChildren(...payload.traits.map(publicTraitCard));
       publicTraitGrid.hidden = false;
-      publicTraitStatus.textContent = `目前啟用 ${payload.traits.length} 種人格特質；點開卡片可查看全部詞彙權重。`;
-      publicTraitRevision.textContent = `SQL 詞庫 v${payload.revision || "—"}`;
-
-      const typeProfileCount = Number(payload.type_profile_count);
-      if (publicTypeWeightStatus && Number.isInteger(typeProfileCount) && typeProfileCount > 0) {
-        publicTypeWeightStatus.textContent = `已啟用 ${typeProfileCount} 種 · ${payload.type_weight_version || "屬性規則"}`;
-      } else if (publicTypeWeightStatus) {
-        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
-        publicTypeWeightStatus.classList.add("is-error");
-      }
+      publicTraitStatus.textContent = `共 ${payload.traits.length} 型；展開各型可查看詳細個性、配對行為參考詞與研究來源。`;
+      publicTraitRevision.textContent = `內建 MBTI · ${payload.catalog_version || "—"} · 修訂 ${payload.revision || "—"}`;
     } catch (_error) {
       publicTraitGrid.replaceChildren();
       publicTraitGrid.hidden = true;
-      publicTraitStatus.textContent = "目前無法載入人格詞庫；推薦功能仍可正常使用。";
+      publicTraitStatus.textContent = "目前無法載入 MBTI 介紹；你仍可直接輸入個性描述進行配對。";
       publicTraitStatus.classList.add("is-error");
       publicTraitRevision.textContent = "暫時無法讀取";
-      if (publicTypeWeightStatus) {
-        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
-        publicTypeWeightStatus.classList.add("is-error");
-      }
     }
   };
 
