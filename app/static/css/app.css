@@ -1228,6 +1228,13 @@ button:disabled {
   background: linear-gradient(90deg, var(--accent), var(--signal));
 }
 
+.score-note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.65;
+}
+
 .explanation-card {
   padding: 0.9rem;
   margin-top: 1rem;

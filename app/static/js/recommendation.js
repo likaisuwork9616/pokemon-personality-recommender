@@ -98,7 +98,7 @@
     return row;
   };
 
-  const explanationCard = (explanation) => {
+  const explanationCard = (explanation, mbti) => {
     const section = element("section", "explanation-card");
     const heading = element("div", "explanation-heading");
     heading.append(
@@ -120,13 +120,13 @@
       element(
         "p",
         "analysis-source",
-        `已融合人格、屬性權重與 ${citationCount} 段圖鑑依據`,
+        `已比對個性描述${mbti ? `、${mbti} 行為參考` : ""}與 ${citationCount} 段圖鑑依據`,
       ),
     );
     return section;
   };
 
-  const resultCard = (result) => {
+  const resultCard = (result, mbti) => {
     const pokemon = result.pokemon;
     const card = element("article", `recommendation-card primary-result rank-${result.rank}`);
     const heading = element("div", "recommendation-card-heading");
@@ -155,12 +155,20 @@
     scores.setAttribute("aria-label", `${pokemon.name_zh} 匹配分數`);
     scores.append(
       scoreRow("總分", result.scores.total, true),
-      scoreRow("語意分數", result.scores.semantic),
+      scoreRow("文字檢索分", result.scores.semantic),
       scoreRow("人格分數", result.scores.personality),
     );
+    if (mbti && typeof result.scores.mbti === "number" && Number.isFinite(result.scores.mbti)) {
+      scores.append(scoreRow(`MBTI 輔助分（${mbti}）`, result.scores.mbti));
+    }
 
-    card.append(heading, typeList, scores);
-    if (result.explanation) card.append(explanationCard(result.explanation));
+    card.append(
+      heading,
+      typeList,
+      scores,
+      element("p", "score-note", "分數表示本次配對的相符程度，不是 MBTI 測驗結果、機率或能力評分。"),
+    );
+    if (result.explanation) card.append(explanationCard(result.explanation, mbti));
     return card;
   };
 
@@ -189,7 +197,7 @@
     return card;
   };
 
-  const renderResults = (payload) => {
+  const renderResults = (payload, mbti) => {
     if (
       !payload
       || !Array.isArray(payload.results)
@@ -199,7 +207,7 @@
       throw new Error("推薦結果格式不完整，請稍後再試。");
     }
     if (!alternatives) throw new Error("推薦結果容器不完整，請稍後再試。");
-    grid.replaceChildren(resultCard(payload.results[0]));
+    grid.replaceChildren(resultCard(payload.results[0], mbti));
     alternatives.replaceChildren(...payload.results.slice(1).map(alternativeResultCard));
     algorithm.textContent = `演算法版本：${payload.algorithm_version || "unknown"}`;
     results.hidden = false;
@@ -372,7 +380,7 @@
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(responseError(payload, response));
-      renderResults(payload);
+      renderResults(payload, mbti);
     } catch (error) {
       if (error.name === "AbortError") return;
       errorMessage.textContent = error.message || "請稍後再試。";

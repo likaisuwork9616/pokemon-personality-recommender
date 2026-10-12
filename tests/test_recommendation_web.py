@@ -87,12 +87,13 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertNotIn("explainToggle", source)
         self.assertNotIn("explanationPrompt", source)
         self.assertIn("payload.results.length !== 3", source)
-        self.assertIn("resultCard(payload.results[0])", source)
+        self.assertIn("resultCard(payload.results[0], mbti)", source)
         self.assertIn("payload.results.slice(1).map(alternativeResultCard)", source)
         self.assertIn("textContent", source)
         self.assertIn('"AI 契合分析"', source)
         self.assertIn('gemini: "Gemini 分析"', source)
-        self.assertIn("已融合人格、屬性權重與", source)
+        self.assertIn("已比對個性描述", source)
+        self.assertNotIn("屬性權重", source)
         self.assertNotIn("evidence.text", source)
         self.assertNotIn("Evidence ID", source)
         self.assertNotIn("Document ID", source)
@@ -212,6 +213,19 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('["http:", "https:"].includes(url.protocol)', source)
         self.assertIn('link.rel = "noopener noreferrer"', source)
         self.assertIn('payload.traits.length !== 16', source)
+
+    def test_result_scores_keep_mbti_optional_and_explain_score_meaning(self):
+        source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('mbti && typeof result.scores.mbti === "number"', source)
+        self.assertIn('Number.isFinite(result.scores.mbti)', source)
+        self.assertIn('MBTI 輔助分（${mbti}）', source)
+        self.assertIn('scoreRow("總分", result.scores.total, true)', source)
+        self.assertIn('scoreRow("文字檢索分", result.scores.semantic)', source)
+        self.assertIn('scoreRow("人格分數", result.scores.personality)', source)
+        self.assertIn("不是 MBTI 測驗結果、機率或能力評分", source)
+        self.assertNotIn("推定類型", source)
 
     def test_primary_and_alternative_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
