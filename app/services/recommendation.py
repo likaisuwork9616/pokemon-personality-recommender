@@ -274,4 +274,3 @@ class HybridRecommendationEngine:
 
     def explain(self, user_text: str, pokemon: dict[str, Any]) -> dict[str, object]:
         return self.explain_results(user_text, [pokemon])[int(pokemon["database_id"])]
-
