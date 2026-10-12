@@ -58,8 +58,8 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("原始文字與 query vector", response.text)
         self.assertIn("若伺服器啟用外部 AI", response.text)
         self.assertIn("文字與本次證據會送往設定的服務", response.text)
-        self.assertIn('/static/js/recommendation.js?v=20260908-2', response.text)
-        self.assertIn('/static/css/app.css?v=20260908-4', response.text)
+        self.assertIn('/static/js/recommendation.js?v=20261012-mbti1', response.text)
+        self.assertIn('/static/css/app.css?v=20261012-mbti1', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
         self.assertIn("MBTI 十六型人格", response.text)
         self.assertIn("同一類型的人也會有不同個性", response.text)
@@ -141,7 +141,7 @@ class RecommendationWebTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn('data-theme="pokedex"', response.text)
-                self.assertIn('/static/css/app.css?v=20260908-4', response.text)
+                self.assertIn('/static/css/app.css?v=20261012-mbti1', response.text)
 
         styles = (ROOT / "app" / "static" / "css" / "app.css").read_text(
             encoding="utf-8"
@@ -256,7 +256,7 @@ class RecommendationWebTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("/static/css/app.css?v=20260908-4", response.text)
+        self.assertIn("/static/css/app.css?v=20261012-mbti1", response.text)
         self.assertIn("/static/js/catalog.js?v=20260908-3", response.text)
         self.assertIn(".card-image::before", styles)
         self.assertIn(".card-image::after", styles)
