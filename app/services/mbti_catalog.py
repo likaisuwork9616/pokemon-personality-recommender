@@ -136,6 +136,8 @@ def _weighted_terms(value: object, code: str) -> tuple[MbtiWeightedTerm, ...]:
             raise RuntimeError(f"MBTI {code} 的關鍵詞必須包含 term 與 weight。")
         term = _text(item.get("term"), f"{code}.weighted_terms.term")
         normalized = canonicalize_personality_text(term)
+        if len(term) > 80 or len(normalized) > 80:
+            raise RuntimeError(f"MBTI {code} 的關鍵詞及正規化文字不可超過 80 個字元。")
         if normalized in seen:
             raise RuntimeError(f"MBTI {code} 的關鍵詞正規化後重複：{term}。")
         if normalized.upper() in MBTI_CODES or _CODE_PATTERN.fullmatch(normalized.upper()):
@@ -164,6 +166,8 @@ def _profile(payload: object) -> MbtiProfile:
     if code not in MBTI_CODES:
         raise RuntimeError("MBTI 資料代碼必須是標準大寫四字母類型。")
     text_fields = {field: _text(payload.get(field), f"{code}.{field}") for field in _TEXT_FIELDS}
+    if len(text_fields["name_zh"]) > 40:
+        raise RuntimeError(f"MBTI {code} 的中文名稱不可超過 40 個字元。")
     list_fields = {
         field: _text_list(payload.get(field), f"{code}.{field}")
         for field in _LIST_FIELDS
@@ -173,8 +177,18 @@ def _profile(payload: object) -> MbtiProfile:
         raise RuntimeError(f"MBTI {code} 的多面向個性說明至少需要 250 個中文字。")
     source_urls = _text_list(payload.get("source_urls"), f"{code}.source_urls")
     for url in source_urls:
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        try:
+            parsed = urlsplit(url)
+            # Accessing port also rejects non-numeric or out-of-range ports.
+            port = parsed.port
+            hostname = parsed.hostname
+        except ValueError as exc:
+            raise RuntimeError(f"MBTI {code} 的來源必須是有效的 HTTPS 網址。") from exc
+        if (
+            parsed.scheme != "https" or not hostname or parsed.username or parsed.password
+            or any(character.isspace() for character in parsed.netloc)
+            or (port is not None and not 0 <= port <= 65535)
+        ):
             raise RuntimeError(f"MBTI {code} 的來源必須是有效的 HTTPS 網址。")
     return MbtiProfile(
         code=code,
