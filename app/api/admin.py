@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import logging
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -14,8 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.api.catalog import _catalog_item, _images, _localized_profile
 from app.api.deps import get_session
+from app.api.personality import get_public_mbti_catalog, public_mbti_catalog
 from app.repositories.admin import AdminPokemonRepository
-from app.repositories.personality_admin import AdminPersonalityRepository
 from app.repositories.reindex import PokemonIndexState, PokemonReindexRepository
 from app.repositories.reindex_jobs import PokemonReindexJobRepository
 from app.repositories.vector import VectorRepository
@@ -23,11 +21,6 @@ from app.schemas.admin import (
     AdminIndexSourceStatus,
     AdminIndexStatus,
     AdminLoginRequest,
-    AdminPersonalitySynonym,
-    AdminPersonalitySynonymCreate,
-    AdminPersonalitySynonymUpdate,
-    AdminPersonalityTrait,
-    AdminPersonalityTraitUpdate,
     AdminPokemonCreate,
     AdminPokemonDetail,
     AdminPokemonPage,
@@ -37,6 +30,7 @@ from app.schemas.admin import (
     AdminSessionResponse,
 )
 from app.schemas.catalog import CatalogDescription, CatalogImage, CatalogStats
+from app.schemas.personality import PublicPersonalityCatalog
 from app.services.admin_auth import (
     AdminAuth,
     AdminDisabledError,
@@ -49,33 +43,15 @@ from app.services.reindex import (
     PokemonNotFoundError,
     PokemonReindexService,
 )
+from app.services.mbti_catalog import MbtiCatalog
 
 
 router = APIRouter(prefix="/api/v1/admin", tags=["pokemon administration"])
-
-PERSONALITY_REFRESH_PENDING_RESPONSE = {
-    "description": (
-        "資料庫異動已提交；目前程序的人格詞庫快照正在等待 revision-based refresh。"
-    ),
-    "headers": {
-        "X-Personality-Refresh-Status": {
-            "description": "目前程序的人格詞庫快照狀態。",
-            "schema": {"type": "string", "const": "pending"},
-        }
-    },
-}
-
 
 def get_admin_repository(
     session: Annotated[Session, Depends(get_session)],
 ) -> AdminPokemonRepository:
     return AdminPokemonRepository(session)
-
-
-def get_admin_personality_repository(
-    session: Annotated[Session, Depends(get_session)],
-) -> AdminPersonalityRepository:
-    return AdminPersonalityRepository(session)
 
 
 def get_admin_auth(request: Request) -> AdminAuth:
@@ -226,28 +202,6 @@ def _job_response(job: Any, index: AdminIndexStatus | None = None) -> AdminReind
     )
 
 
-def _personality_synonym(item: Any) -> AdminPersonalitySynonym:
-    return AdminPersonalitySynonym(
-        term=item.term,
-        language_code=item.language_code,
-        weight=item.weight,
-        is_active=item.is_active,
-    )
-
-
-def _personality_trait(item: Any) -> AdminPersonalityTrait:
-    return AdminPersonalityTrait(
-        code=item.code,
-        name_zh=item.name_zh,
-        vector_index=item.vector_index,
-        is_active=item.is_active,
-        synonyms=[
-            _personality_synonym(synonym)
-            for synonym in sorted(item.synonyms, key=lambda value: (not value.is_active, value.term))
-        ],
-    )
-
-
 def _get_or_404(repository: AdminPokemonRepository, pokemon_id: int):
     pokemon = repository.get(pokemon_id)
     if pokemon is None:
@@ -299,92 +253,13 @@ def _refresh_runtime_profiles(request: Request) -> None:
         request.app.state.profile_refresh_error = "profile refresh failed"
 
 
-def _record_personality_refresh_failure(request: Request, error_type: str) -> None:
-    metrics = getattr(request.app.state, "request_metrics", None)
-    observe_failure = getattr(metrics, "observe_personality_refresh_failure", None)
-    if callable(observe_failure):
-        observe_failure()
-    logging.getLogger("pokemon.admin").warning(
-        json.dumps(
-            {
-                "event": "personality_refresh_failed",
-                "request_id": getattr(request.state, "request_id", "unavailable"),
-                "error_type": error_type,
-            },
-            separators=(",", ":"),
-        )
-    )
-
-
-def _refresh_runtime_personality(
-    request: Request,
-    repository: AdminPersonalityRepository,
-) -> bool:
-    engine = getattr(request.app.state, "recommendation_engine", None)
-    refresh = getattr(engine, "refresh_personality_catalog", None)
-    if not callable(refresh):
-        mark_failed = getattr(engine, "mark_personality_refresh_failed", None)
-        if callable(mark_failed):
-            mark_failed()
-        _record_personality_refresh_failure(request, "RefreshUnavailable")
-        return False
-    try:
-        refresh(repository.catalog(), revision=repository.revision())
-        healthy = bool(getattr(engine, "personality_refresh_healthy", True))
-        if not healthy:
-            _record_personality_refresh_failure(request, "RefreshUnhealthy")
-        return healthy
-    except Exception as exc:
-        mark_failed = getattr(engine, "mark_personality_refresh_failed", None)
-        if callable(mark_failed):
-            mark_failed()
-        _record_personality_refresh_failure(request, type(exc).__name__)
-        return False
-
-
-def _commit_personality(
-    repository: AdminPersonalityRepository,
-    request: Request,
-) -> bool:
-    try:
-        repository.bump_revision()
-        repository.session.commit()
-    except IntegrityError:
-        repository.session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "personality_conflict", "message": "人格特質名稱或同義詞已存在。"},
-        ) from None
-    return _refresh_runtime_personality(request, repository)
-
-
-def _set_personality_refresh_response(response: Response, refreshed: bool) -> None:
-    response.headers["X-Personality-Refresh-Status"] = (
-        "ready" if refreshed else "pending"
-    )
-    if not refreshed:
-        # The database transaction is already committed. A 202 response tells
-        # clients not to retry the mutation while the revision-based runtime
-        # refresh remains pending.
-        response.status_code = status.HTTP_202_ACCEPTED
-
-
-def _set_personality_noop_response(request: Request, response: Response) -> None:
-    """Expose current health without refreshing an unchanged vocabulary."""
-
-    engine = getattr(request.app.state, "recommendation_engine", None)
-    healthy = engine is not None and bool(
-        getattr(engine, "personality_refresh_healthy", True)
-    )
-    response.headers["X-Personality-Refresh-Status"] = (
-        "ready" if healthy else "pending"
-    )
-
-
-def _invalid_personality_vocabulary(exc: ValueError) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail={"code": "invalid_personality_vocabulary", "message": str(exc)},
+def _mbti_catalog_read_only() -> None:
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "code": "mbti_catalog_read_only",
+            "message": "MBTI 介紹使用經版本管理的唯讀資料；舊人格詞庫寫入功能已停用。",
+        },
     )
 
 
@@ -442,108 +317,55 @@ def logout(
 
 @router.get(
     "/personality/traits",
-    response_model=list[AdminPersonalityTrait],
-    summary="列出人格特質與同義詞",
+    response_model=PublicPersonalityCatalog,
+    summary="查看唯讀的十六型 MBTI 詳細介紹",
 )
 def list_personality_traits(
+    response: Response,
     _admin_session: Annotated[AdminSession, Depends(require_admin)],
-    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
-) -> list[AdminPersonalityTrait]:
-    return [_personality_trait(item) for item in repository.list_traits()]
+    catalog: Annotated[MbtiCatalog, Depends(get_public_mbti_catalog)],
+) -> PublicPersonalityCatalog:
+    response.headers["Cache-Control"] = "no-store"
+    return public_mbti_catalog(catalog)
 
 
 @router.patch(
     "/personality/traits/{trait_code}",
-    response_model=AdminPersonalityTrait,
-    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
-    summary="修改人格特質名稱",
+    deprecated=True,
+    responses={409: {"description": "MBTI 資料唯讀，舊人格詞庫寫入已停用。"}},
+    summary="已停用：修改舊人格特質名稱",
 )
 def update_personality_trait(
-    payload: AdminPersonalityTraitUpdate,
-    request: Request,
-    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
-    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
-) -> AdminPersonalityTrait:
-    trait = repository.get_trait(trait_code)
-    if trait is None:
-        raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    try:
-        changed = repository.rename_trait(trait, payload.name_zh)
-    except ValueError as exc:
-        raise _invalid_personality_vocabulary(exc) from None
-    if not changed:
-        _set_personality_noop_response(request, response)
-        return _personality_trait(trait)
-    _set_personality_refresh_response(
-        response,
-        _commit_personality(repository, request),
-    )
-    return _personality_trait(trait)
+) -> None:
+    _mbti_catalog_read_only()
 
 
 @router.post(
     "/personality/traits/{trait_code}/synonyms",
-    response_model=AdminPersonalitySynonym,
-    status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
-    summary="新增人格同義詞",
+    deprecated=True,
+    responses={409: {"description": "MBTI 資料唯讀，舊人格詞庫寫入已停用。"}},
+    summary="已停用：新增舊人格同義詞",
 )
 def create_personality_synonym(
-    payload: AdminPersonalitySynonymCreate,
-    request: Request,
-    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
-    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
-) -> AdminPersonalitySynonym:
-    trait = repository.get_trait(trait_code)
-    if trait is None:
-        raise HTTPException(status_code=404, detail={"code": "trait_not_found", "message": "找不到指定的人格特質。"})
-    try:
-        item = repository.add_synonym(trait, **payload.model_dump())
-    except ValueError as exc:
-        raise _invalid_personality_vocabulary(exc) from None
-    _set_personality_refresh_response(
-        response,
-        _commit_personality(repository, request),
-    )
-    return _personality_synonym(item)
+) -> None:
+    _mbti_catalog_read_only()
 
 
 @router.patch(
     "/personality/traits/{trait_code}/synonyms",
-    response_model=AdminPersonalitySynonym,
-    responses={status.HTTP_202_ACCEPTED: PERSONALITY_REFRESH_PENDING_RESPONSE},
-    summary="修改或停用人格同義詞",
+    deprecated=True,
+    responses={409: {"description": "MBTI 資料唯讀，舊人格詞庫寫入已停用。"}},
+    summary="已停用：修改舊人格同義詞",
 )
 def update_personality_synonym(
-    payload: AdminPersonalitySynonymUpdate,
-    request: Request,
-    response: Response,
     trait_code: str,
     _admin_session: Annotated[AdminSession, Depends(require_csrf)],
-    repository: Annotated[AdminPersonalityRepository, Depends(get_admin_personality_repository)],
-) -> AdminPersonalitySynonym:
-    item = repository.get_synonym(trait_code, payload.original_term)
-    if item is None:
-        raise HTTPException(status_code=404, detail={"code": "synonym_not_found", "message": "找不到指定的人格同義詞。"})
-    try:
-        changes = payload.model_dump(exclude_unset=True)
-        changes.pop("original_term", None)
-        changed = repository.update_synonym(item, **changes)
-    except ValueError as exc:
-        repository.session.rollback()
-        raise _invalid_personality_vocabulary(exc) from None
-    if not changed:
-        _set_personality_noop_response(request, response)
-        return _personality_synonym(item)
-    _set_personality_refresh_response(
-        response,
-        _commit_personality(repository, request),
-    )
-    return _personality_synonym(item)
+) -> None:
+    _mbti_catalog_read_only()
 
 
 @router.get("/pokemon", response_model=AdminPokemonPage, summary="列出所有寶可夢")
