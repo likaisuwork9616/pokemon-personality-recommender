@@ -778,6 +778,33 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.mbti-field {
+  margin-top: 1rem;
+}
+
+.mbti-field small {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.mbti-help,
+.mbti-error {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
+
+.mbti-error {
+  color: var(--danger);
+}
+
+.mbti-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .privacy-note {
   margin: 0.85rem 0;
   color: var(--muted);
