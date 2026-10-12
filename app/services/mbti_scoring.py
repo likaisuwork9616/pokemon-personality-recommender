@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Sequence
 
 import numpy as np
@@ -12,6 +13,46 @@ from app.personality_vocabulary import canonicalize_personality_text
 
 EMBEDDING_DIMENSIONS = 384
 MBTI_DIMENSIONS = 16
+
+# These short, explicit negation rules suppress positive keyword claims only.
+# They do not infer sentiment, an opposite trait, or a personality type.
+_CLAUSE_BOUNDARY = re.compile(
+    r"[,，。.!?！？;；:\r\n]+|\b(?:but|however|yet)\b|但是|不過|不过|然而|但|卻|却"
+)
+_CHINESE_NEGATION = re.compile(
+    r"(?:不(?!斷|断|只|但|僅|仅|光|停|吝|懈|得不)|沒(?:有)?|没有|"
+    r"並非|并非|討厭|讨厌|避免|拒絕|拒绝).{0,10}$"
+)
+_ENGLISH_NEGATION = re.compile(
+    r"\b(?:not(?!\s+(?:only|just)\b)|never|no|without|"
+    r"don['’]t|doesn['’]t|didn['’]t|can['’]t|cannot|won['’]t|"
+    r"avoid(?:s|ed|ing)?|refus(?:e|es|ed|ing)|hate(?:s|d)?|dislike(?:s|d)?|non)"
+    r"(?:[\s-]+[a-z][a-z'’-]*){0,4}[\s-]*$"
+)
+
+
+def _behavior_text(value: str) -> str:
+    # Keep line boundaries before canonicalization collapses whitespace.
+    return canonicalize_personality_text(str(value).replace("\r", ";").replace("\n", ";"))
+
+
+def _affirmed_term(query: str, term: str) -> bool:
+    """Count a term once if at least one occurrence is not explicitly negated."""
+
+    pattern = re.escape(term)
+    if re.match(r"[a-z0-9_]", term):
+        pattern = r"(?<![a-z0-9_])" + pattern
+    if re.search(r"[a-z0-9_]$", term):
+        pattern += r"(?![a-z0-9_])"
+    for match in re.finditer(pattern, query):
+        prefix = query[max(0, match.start() - 160):match.start()]
+        clause_prefix = _CLAUSE_BOUNDARY.split(prefix)[-1]
+        if _CHINESE_NEGATION.search(clause_prefix[-16:]):
+            continue
+        if _ENGLISH_NEGATION.search(clause_prefix):
+            continue
+        return True
+    return False
 
 
 def normalized_embedding(value: Sequence[float] | np.ndarray) -> np.ndarray:
@@ -87,7 +128,7 @@ class MbtiScorer:
         return tuple((key, display, weight) for key, (display, weight) in terms.items())
 
     def affinity(self, text: str, semantic_vector: Sequence[float]) -> np.ndarray:
-        query = canonicalize_personality_text(text)
+        query = _behavior_text(text)
         embedding = normalized_embedding(semantic_vector)
         semantic = np.clip(self.prototype_vectors @ embedding, 0, 1)
         coverage = np.zeros(MBTI_DIMENSIONS, dtype=float)
@@ -96,18 +137,18 @@ class MbtiScorer:
             total = sum(weight for _term, _display, weight in terms)
             if total:
                 coverage[index] = sum(
-                    weight for term, _display, weight in terms if term in query
+                    weight for term, _display, weight in terms if _affirmed_term(query, term)
                 ) / total
         return np.clip(0.8 * semantic + 0.2 * coverage, 0, 1)
 
     def matched_terms(self, text: str, *, limit: int = 3) -> list[str]:
         """Return actual behavior words, never an inferred MBTI code."""
 
-        query = canonicalize_personality_text(text)
+        query = _behavior_text(text)
         matched: dict[str, tuple[str, float]] = {}
         for profile in self.catalog.profiles:
             for term, display, weight in self._terms(profile):
-                if term not in query or term.upper() in self.catalog.codes:
+                if term.upper() in self.catalog.codes or not _affirmed_term(query, term):
                     continue
                 if term not in matched or weight > matched[term][1]:
                     matched[term] = (display, weight)
