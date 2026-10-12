@@ -148,6 +148,45 @@ class MbtiCatalogTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "權重"):
                     mbti_catalog._catalog_from_payload(payload)
 
+    def test_public_name_and_term_length_limits_are_enforced_before_use(self):
+        payload = copy.deepcopy(self.payload)
+        payload["profiles"][0]["name_zh"] = "人" * 40
+        payload["profiles"][0]["weighted_terms"][0]["term"] = "行" * 80
+        accepted = mbti_catalog._catalog_from_payload(payload)
+        self.assertEqual(len(accepted.profiles[0].name_zh), 40)
+        self.assertEqual(len(accepted.profiles[0].weighted_terms[0].term), 80)
+
+        invalid = copy.deepcopy(self.payload)
+        invalid["profiles"][0]["name_zh"] = "人" * 41
+        with self.assertRaisesRegex(RuntimeError, "40"):
+            mbti_catalog._catalog_from_payload(invalid)
+        # NFKC expands the ligature to three letters; casefold expands ß.
+        for term in ("行" * 81, "ﬃ" * 27, "ß" * 41):
+            with self.subTest(term=term):
+                invalid = copy.deepcopy(self.payload)
+                invalid["profiles"][0]["weighted_terms"][0]["term"] = term
+                with self.assertRaisesRegex(RuntimeError, "80"):
+                    mbti_catalog._catalog_from_payload(invalid)
+
+    def test_source_parser_and_port_errors_are_clear_catalog_failures(self):
+        for url in (
+            "https://[invalid", "https://[::1]:invalid", "https://example.com:65536",
+            "https://example.com:-1", "https://example.com:not-a-port",
+            "https://example .com", "https://user:password@example.com",
+        ):
+            with self.subTest(url=url):
+                invalid = copy.deepcopy(self.payload)
+                invalid["profiles"][0]["source_urls"] = [url]
+                with self.assertRaisesRegex(RuntimeError, "HTTPS"):
+                    mbti_catalog._catalog_from_payload(invalid)
+
+        for url in ("https://example.com:443/reference", "https://[::1]:8443/reference"):
+            with self.subTest(url=url):
+                payload = copy.deepcopy(self.payload)
+                payload["profiles"][0]["source_urls"] = [url]
+                catalog = mbti_catalog._catalog_from_payload(payload)
+                self.assertEqual(catalog.profiles[0].source_urls, (url,))
+
     def test_terms_reject_nfkc_casefold_whitespace_duplicates_and_bare_codes(self):
         for terms in (("GUIDE", "ｇｕｉｄｅ"), ("quiet support", "Quiet　 Support")):
             with self.subTest(terms=terms):
