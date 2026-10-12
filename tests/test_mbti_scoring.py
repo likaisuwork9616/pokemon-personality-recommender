@@ -54,6 +54,69 @@ class MbtiScoringTests(unittest.TestCase):
     def test_actual_behavior_terms_are_returned_without_inferred_type(self):
         self.assertEqual(self.scorer.matched_terms("我是可靠的人，也是 ISTJ"), ["可靠"])
 
+    def _with_term(self, term):
+        self.catalog.profiles[0].weighted_terms = (SimpleNamespace(term=term, weight=2.0),)
+
+    def test_chinese_explicit_negation_is_neither_positive_coverage_nor_behavior(self):
+        self._with_term("社交")
+        for text in (
+            "我不社交。", "我沒有社交習慣。", "我不喜歡社交。", "我不擅長社交。",
+            "我討厭社交。", "我避免社交。", "我拒絕社交。", "我並非喜歡社交的人。",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(self.scorer.affinity(text, np.zeros(384))[0], 0)
+                self.assertEqual(self.scorer.matched_terms(text), [])
+
+    def test_english_explicit_negation_does_not_claim_positive_keywords(self):
+        self._with_term("social")
+        for text in (
+            "I am not social.", "I am never social.", "I don't like social events.",
+            "I do not enjoy being social.", "I don’t enjoy social events.",
+            "I avoid being social.", "I refuse to be social.", "I hate social events.",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(self.scorer.affinity(text, np.zeros(384))[0], 0)
+                self.assertEqual(self.scorer.matched_terms(text), [])
+
+    def test_an_affirmed_occurrence_survives_other_negated_occurrences(self):
+        for term, text in (
+            ("社交", "我不喜歡社交，但有時享受社交。"),
+            ("社交", "我避免社交\n我有時享受社交"),
+            ("social", "I am not social with strangers, but I am social with close friends."),
+        ):
+            with self.subTest(text=text):
+                self._with_term(term)
+                self.assertAlmostEqual(self.scorer.affinity(text, np.zeros(384))[0], 0.2)
+                self.assertEqual(self.scorer.matched_terms(text), [term])
+
+    def test_repeated_affirmed_or_negated_terms_still_count_at_most_once(self):
+        self._with_term("社交")
+        self.assertAlmostEqual(self.scorer.affinity("社交，社交，社交", np.zeros(384))[0], 0.2)
+        self.assertEqual(self.scorer.matched_terms("社交，社交，社交"), ["社交"])
+        self.assertEqual(self.scorer.affinity("不社交，不社交，不社交", np.zeros(384))[0], 0)
+
+    def test_english_word_boundaries_avoid_matching_antisocial_or_socialize(self):
+        self._with_term("social")
+        for text in ("antisocial", "socialize", "sociality", "unsocial", "nonsocial"):
+            with self.subTest(text=text):
+                self.assertEqual(self.scorer.affinity(text, np.zeros(384))[0], 0)
+                self.assertEqual(self.scorer.matched_terms(text), [])
+        self.assertEqual(self.scorer.matched_terms("I am SOCIAL."), ["social"])
+
+    def test_positive_not_only_and_chinese_continuous_phrases_are_not_negations(self):
+        self._with_term("社交")
+        self.assertEqual(self.scorer.matched_terms("我不只喜歡社交，也喜歡獨處。"), ["社交"])
+        self.assertEqual(self.scorer.matched_terms("我不斷參與社交。"), ["社交"])
+        self._with_term("social")
+        self.assertEqual(self.scorer.matched_terms("I am not only social but also reflective."), ["social"])
+
+    def test_negation_changes_keyword_coverage_without_changing_semantic_weight(self):
+        self._with_term("社交")
+        affirmed = self.scorer.affinity("我喜歡社交", self.prototypes[0])
+        negated = self.scorer.affinity("我不喜歡社交", self.prototypes[0])
+        self.assertAlmostEqual(affirmed[0], 1.0)
+        self.assertAlmostEqual(negated[0], 0.8)
+
     def test_long_profile_tail_contributes_without_encoder_truncation(self):
         self.catalog.profiles[0].matching_text = "前段內容" * 80 + "尾段重要偏好"
         calls = []
