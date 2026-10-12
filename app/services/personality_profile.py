@@ -48,4 +48,3 @@ class PokemonPersonalityProfile:
     @staticmethod
     def safe_get(row: pd.Series, column: str, default: str = "") -> Any:
         return row.get(column, default)
-
