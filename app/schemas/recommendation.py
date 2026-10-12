@@ -4,7 +4,9 @@ import re
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.services.mbti_catalog import normalize_mbti
 
 
 class RecommendationRequest(BaseModel):
@@ -17,6 +19,17 @@ class RecommendationRequest(BaseModel):
         default=False,
         description="是否呼叫外部模型為 Top 1 產生契合分析",
     )
+    mbti: str | None = Field(default=None, description="選填 MBTI 四字母類型；A/T 後綴不參與計分")
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def trim_text(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("mbti", mode="before")
+    @classmethod
+    def normalize_selected_mbti(cls, value):
+        return normalize_mbti(value)
 
 
 class ScoreBreakdown(BaseModel):
@@ -28,13 +41,14 @@ class ScoreBreakdown(BaseModel):
     personality: float = Field(
         ge=0,
         le=1,
-        description="規則式人格向量相似度",
+        description="使用者與寶可夢的 16 維 MBTI 行為訊號相似度，非推定類型",
     )
     total: float = Field(
         ge=0,
         le=1,
         description="語意與人格訊號的最終排序分數",
     )
+    mbti: float | None = Field(default=None, ge=0, le=1, description="指定 MBTI 類型契合分；未填為 null")
 
 
 class EvidenceResponse(BaseModel):
@@ -117,7 +131,7 @@ class RecommendationResult(BaseModel):
 
 
 class RecommendationResponse(BaseModel):
-    algorithm_version: str = "pgvector-fts-rrf-v1"
+    algorithm_version: str = "mbti-hybrid-v2"
     results: list[RecommendationResult] = Field(min_length=3, max_length=3)
 
     @model_validator(mode="after")
