@@ -9,7 +9,7 @@
 ![pgvector](https://img.shields.io/badge/pgvector-HNSW%20%7C%20exact-336791)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-這是一套以 FastAPI、PostgreSQL 與 pgvector 建立的 Hybrid Retrieval／Grounded RAG 專案。推薦排名由語意檢索、中文全文搜尋、SQL 人格詞庫與寶可夢屬性參考權重共同決定；LLM 只負責將既有排名與證據整理成說明，不參與改寫名次。
+這是一套以 FastAPI、PostgreSQL 與 pgvector 建立的 Hybrid Retrieval／Grounded RAG 專案。個性描述必填、MBTI 選填；推薦排名由文字檢索、內建 16 型詳細描述及寶可夢的已索引行為共同決定。LLM 將既有排名與證據整理成說明，不改寫名次。
 
 目前以本機 Docker Compose 作為完整展示環境。推薦頁聚焦 Top 1，Top 2／3 以精簡卡片保留供比較；REST API 仍固定回傳完整 Top 3 與各項分數。
 
@@ -20,10 +20,10 @@
 - Dense Retrieval 使用 384 維 SentenceTransformer embeddings 與 pgvector HNSW；另保留 exact cosine search 作為效能基準。
 - jieba 中文斷詞搭配 PostgreSQL Full Text Search，Dense／Lexical 各取 Top 50，再以 RRF（`k=60`）融合。
 - 圖鑑敘述拆成版本化 documents 與 chunks，保存來源、語言、雜湊、current／ready 狀態及 evidence lineage。
-- 16 維人格特質、繁中／英文同義詞與權重存於 PostgreSQL，管理端修改後可無須重啟立即更新。
-- 18 種寶可夢屬性具有人格參考權重；主、副屬性權重會合併進後端人格計分及 Top 1 分析證據包。
+- 內建版本化 MBTI JSON，提供全部 16 型的詳細介紹、行為詞、來源與查證日期；不知道類型也能配對，不新增問卷或自動判型。
+- 使用者與寶可夢共用 80% 描述語意、20% 加權行為詞的計分；寶可夢屬性不再加入人格權重。
 - Gemini 優先產生結構化分析；失敗時改用 OpenAI，再失敗則使用本地 evidence-only fallback。
-- 管理後台支援寶可夢維護、停用／恢復、人格詞庫管理、reindex 排程與進度查詢。
+- 管理後台支援寶可夢維護、停用／恢復、唯讀 MBTI 介紹、reindex 排程與進度查詢。
 - Alembic 管理完整 schema，Docker Compose 可從空資料庫完成 migration、seed、embedding 與服務啟動。
 - Artwork 可選擇存放於 S3、透過 CloudFront 發送，PostgreSQL 僅保存圖片 URL。
 
@@ -41,7 +41,9 @@ flowchart TB
     TOKENS --> FTS[PostgreSQL FTS Top 50]
     DENSE --> RRF[RRF k=60]
     FTS --> RRF
-    RRF --> SCORE[人格詞庫 + 屬性參考權重<br/>分數融合與穩定排序]
+    MBTI[內建 MBTI 詳細資料] --> SCORE[共用行為計分<br/>文字優先與穩定排序]
+    MBTI -->|選填類型另召回| RRF
+    RRF --> SCORE
     SCORE --> TOP3[Top 3 排名、分數與證據]
 
     TOP3 --> TOP1[Top 1 evidence packet]
@@ -56,32 +58,38 @@ flowchart TB
     WEB --> CDN[CloudFront artwork]
 ```
 
-CSV 僅在建立空資料庫時作為 seed 來源。應用程式啟動後，寶可夢資料、人格詞庫、知識 chunks、索引狀態與 embeddings 都直接從 PostgreSQL 讀取。
+CSV 僅在建立空資料庫時作為 seed 來源。寶可夢資料、知識 chunks、索引狀態與 embeddings 從 PostgreSQL 讀取；MBTI 從 `app/data/mbti_zh_hant.json` 載入。本次沒有修改資料庫、seed 或索引，SQL 資料源與編輯功能請接續 [sql代辦清單.md](sql代辦清單.md)。
 
 ## 推薦流程
 
-1. FastAPI 驗證輸入長度與 request schema。
+1. FastAPI 驗證必填文字（去除前後空白後 2–2000 字）與選填 MBTI；大小寫、全形、前後空白與 `INFP-T`／`INFP-A` 可正規化，A/T 不計分。
 2. SentenceTransformer 將描述編碼成正規化的 384 維 query vector。
 3. pgvector 與中文全文搜尋各取 Top 50 chunks，再以 RRF 融合。
-4. 系統按寶可夢聚合結果，每隻最多保留三段證據，避免 chunk 數量造成灌票。
-5. SQL 人格詞庫將描述映射到 16 維人格訊號，並加入主、副屬性參考權重。
-6. 語意與人格分數依固定規則融合，以寶可夢 ID 作為最終 tie-break，產生可重現的 Top 3。
+4. 文字召回最多 50 隻；有 MBTI 時，另以該型詳細描述與 prototype 召回最多 50 隻再合併。每隻最多三段證據，同 chunk 優先保留文字分支資訊，MBTI 單獨召回者的文字檢索分為 0。
+5. 使用者自述與寶可夢完整 current／ready 行為文件，分別對照 16 型詳細描述與關鍵詞。描述原型以短視窗編碼後合併；寶可夢使用既有同模型向量，不讀尚未重建索引的最新編輯描述。
+6. 按下方固定公式計分；總分、文字檢索分、行為相似度、圖鑑編號、型態鍵、資料庫 ID 依序決定穩定排名。推薦交易採唯讀 repeatable-read 快照。
 7. 只有 Top 1 會進入 Grounded RAG；Gemini、OpenAI 或本地 fallback 均不得改變排名與分數。
 
 總分公式：
 
 ```text
-total = α × personality + (1 - α) × semantic
+type_affinity = 0.80 × detailed_description_cosine + 0.20 × weighted_keyword_coverage
+personality = cosine(user_affinity_16d, pokemon_affinity_16d)
+text_match = 0.75 × semantic + 0.25 × personality
+total (有 MBTI) = 0.75 × text_match + 0.25 × selected_type_affinity
+total (無 MBTI) = text_match
 ```
 
-`α` 依辨識到的人格訊號調整，範圍為 `0.35–0.80`。每段證據都帶有 `document_id`、`chunk_id`、`content_hash` 與 `evidence_id`，可追溯到當次使用的知識版本。
+缺少任何一側的行為訊號時，`text_match = semantic`。每型訊號使用截限至 0–1 的 cosine 與加權關鍵詞涵蓋率；明確否定短片語不計為正向命中。這些是初始工程權重，分數不是心理測量準確率。每段證據都有 `document_id`、`chunk_id`、`content_hash` 與 `evidence_id`。
+
+官方 MBTI 的四組偏好、Step I／Step II 與 20 個面向，以及 A/T 與官方工具的區別，見 [研究來源](docs/mbti-research.md)。本站不推定未知者或寶可夢的 MBTI。
 
 ### AI 契合分析與備援
 
 - Web 介面預設要求 Top 1 契合分析；API 的 `generate_explanation` 預設為 `false`，呼叫端可自行決定是否啟用。
 - 有設定 `GEMINI_API_KEY` 時先呼叫 Gemini；結果逾時、格式錯誤、非繁中、引用不合法或其他失敗時才嘗試 OpenAI。
 - Gemini 缺少 key 或無法使用，但已設定 `OPENAI_API_KEY` 時，直接由 OpenAI 接手。
-- 兩個外部服務都不可用時，系統會根據本次人格訊號、屬性權重及圖鑑證據產生本地繁中說明。
+- 兩個外部服務都不可用時，根據當次允許的寶可夢證據及實際行為詞產生本地繁中說明；外文證據無法本地概述時會保留細節供使用者查看，不從最新未索引描述補充事實。
 - LLM 回應必須符合結構化 schema，且只能引用該推薦結果自己的 evidence allowlist。
 - OpenAI 請求明確設定 `store=false`；程式不會將模型錯誤、prompt 或原始描述寫入應用程式 log。
 
@@ -181,17 +189,17 @@ docker compose down
 | `POST` | `/api/v1/recommendations` | 回傳 Top 3；僅 Top 1 可包含契合分析 |
 | `GET` | `/api/v1/pokemon` | 中英文搜尋、分頁、屬性、世代及特殊分類篩選 |
 | `GET` | `/api/v1/pokemon/{pokemon_id}` | 取得單一寶可夢的繁中圖鑑資料 |
-| `GET` | `/api/v1/personality/traits` | 取得公開的人格特質與加權詞彙 |
+| `GET` | `/api/v1/personality/traits` | 取得內建 16 型 MBTI 詳細介紹、來源與資料版本；不查詢資料庫 |
 
 範例：
 
 ```bash
 curl --request POST http://localhost:8000/api/v1/recommendations \
   --header "Content-Type: application/json" \
-  --data '{"text":"我慢熟但重視承諾，也喜歡和別人分享自己喜歡的事物。","generate_explanation":true}'
+  --data '{"text":"我慢熟但重視承諾，也喜歡和別人分享自己喜歡的事物。","mbti":"INFP-T","generate_explanation":true}'
 ```
 
-每筆結果包含寶可夢基本資料、圖片 URL、`semantic`／`personality`／`total` 分數及 evidence lineage；`results[0]` 另包含選配的繁中契合分析。完整 request／response schema 以 Swagger UI 為準。
+`mbti` 可省略、留空或傳 `null`。回應的 `algorithm_version` 是 `mbti-hybrid-v2`；每筆結果包含 `semantic`／`personality`／`mbti`／`total` 分數，未填類型時 `scores.mbti` 為 `null`。`results[0]` 可包含繁中契合分析；完整 schema 以 Swagger UI 為準。
 
 ### 管理介面
 
@@ -200,7 +208,7 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 - 單一管理員 session 登入與登出
 - 寶可夢新增、查看、修改、停用與恢復
 - index status、reindex 排程與工作進度
-- 人格特質及同義詞的新增、修改、加權、停用與恢復
+- 唯讀 MBTI 詳細介紹及行為詞權重。舊人格 PATCH／同義詞 POST、PATCH API 通過登入與 CSRF 檢查後回傳 `409 mbti_catalog_read_only`，不建立資料庫 session 或提交異動；SQL 編輯接續清單另列。
 
 管理 session 使用簽章 HttpOnly cookie、`SameSite=Strict` 與 CSRF token。未設定管理密碼或 session secret 時管理登入會停用；公開圖鑑排除 inactive Pokémon，推薦流程只使用 current、ready 的知識與 embeddings。
 
@@ -246,9 +254,9 @@ GitHub Actions 使用 Python 3.12 與暫時的 pgvector PostgreSQL 執行 migrat
 python -m unittest discover -s tests -v
 ```
 
-目前共有 186 個測試案例。本機未設定可丟棄的 `TEST_DATABASE_URL` 時，結果為 185 通過、1 略過；CI 提供獨立 PostgreSQL 後會執行 importer 整合測試。
+本機未設定可丟棄的 `TEST_DATABASE_URL` 時，匯入器的 PostgreSQL 整合測試會略過；CI 提供獨立 PostgreSQL 後才執行該項。本次 MBTI 測試使用替代 session 與編碼器，不連線使用者資料庫、不下載模型，也不以 `docker compose up` 驗證。
 
-測試範圍包含 API schema、隱私、Hybrid Retrieval、RRF、人格與屬性權重、provider failover、圖鑑在地化、管理驗證、reindex 原子切換、migration、圖片 manifest 及效能統計。
+測試包含 16 型完整性、輸入正規化、詳細描述參與計分、同型不同描述、同描述不同型、衝突類型、舊屬性不影響計分、唯讀查詢與隱私，以及既有 retrieval、RAG、圖鑑、管理與 migration 測試。
 
 ### pgvector 查詢基準
 
@@ -263,7 +271,7 @@ HNSW 平均 Recall@50 為 99.64%，最低單次 Recall@50 為 92%。結果會受
 
 ### 離線推薦基準
 
-目前評估集只有 5 筆人工標註，主要用來驗證 evaluation pipeline 與追蹤 ranking regression，不能推論正式推薦品質。
+目前評估集只有 5 筆人工標註。JSONL 可增加選填 `mbti`，由同一推薦介面評估；輸出報告不含原始描述或類型。下表是改版前的歷史基準，本次未連線真實資料庫重跑，MBTI 版本的實際品質待回家驗證，不能從替代編碼器測試推論準確率。
 
 | 指標 | 結果 |
 | --- | ---: |
@@ -309,7 +317,7 @@ HNSW 平均 Recall@50 為 99.64%，最低單次 Recall@50 為 92%。結果會受
 - 目前以本機 Docker Compose 為主要執行環境，未提供公開 HTTPS 部署。
 - 離線評估集只有 5 筆標註；在據此調整排名前，仍需擴充案例與相關性標籤。
 - 管理後台採單一密碼，沒有多使用者角色、操作審核或 audit log。
-- `/health/ready` 會檢查推薦引擎與人格詞庫快照，但尚未在每次探測時執行即時 DB round-trip。
+- `/health/ready` 檢查推薦引擎是否已載入；內建 MBTI catalog 啟動時驗證，尚未在每次探測時執行即時 DB round-trip。
 - `/metrics` 是 process-local 記憶體統計，程序重啟後歸零，也尚未接上 Prometheus／Grafana。
 - 目前沒有 Cross-Encoder reranker；是否加入應由擴充後的評估集與延遲量測決定。
 

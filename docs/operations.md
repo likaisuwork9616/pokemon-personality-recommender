@@ -76,7 +76,7 @@ curl http://localhost:8000/metrics
 
 HTTP response 會包含 `X-Request-ID`。Request log 記錄 method、route template、status 與 duration，不讀取 request body。`/metrics` 是 process-local 記憶體統計，application restart 後會歸零。
 
-人格詞庫異動已寫入 PostgreSQL、但目前程序無法刷新記憶體快照時，管理 API 會回傳 `202` 與 `X-Personality-Refresh-Status: pending`，`/health/ready` 同時回傳 `503`。下一次刷新成功後 readiness 會自動恢復；失敗次數與目前狀態可從 `/metrics` 查驗。
+MBTI 改版使用內建 immutable catalog，介紹與行為詞目前唯讀；舊人格寫入 API 回傳 `409 mbti_catalog_read_only`，不再提交資料或進行 SQL 人格 revision 刷新。SQL provider、後台編輯與多程序版本刷新尚待 [SQL 接續清單](../sql代辦清單.md) 完成。推薦引擎啟動失敗仍會令 readiness 回傳 `503`。
 
 ### 停止與重建
 
@@ -171,7 +171,7 @@ SELECT count(*) AS chunk_count FROM pokemon_knowledge_chunks;
 SELECT count(*) AS embedding_count FROM pokemon_chunk_embeddings;
 ~~~
 
-檢查圖鑑與人格詞庫：
+檢查圖鑑與保留供回退的舊人格詞庫（舊人格不參與 MBTI 配對）：
 
 ~~~sql
 SELECT pokedex_number, name_zh, name_en, is_active
@@ -188,7 +188,7 @@ ORDER BY pt.vector_index, pts.term
 LIMIT 30;
 ~~~
 
-CSV 只參與 seed。Runtime 的 catalog、Dense、Lexical 與人格查詢分別走 `app/repositories/pokemon.py`、`vector.py`、`retrieval.py` 與 `personality.py`。
+CSV 只參與 seed。公開圖鑑走 `app/repositories/pokemon.py`，Dense／Lexical 走 `vector.py`／`retrieval.py`；推薦 metadata 與完整 current／ready 行為文件走 `mbti_profiles.py`，MBTI catalog 走 `app/services/mbti_catalog.py` 與內建 JSON。`personality.py` 舊 SQL 詞庫保留供回退，不參與推薦。
 
 ## Reindex worker
 

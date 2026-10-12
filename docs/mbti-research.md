@@ -22,7 +22,7 @@ E/I 描述注意力與能量較自然朝向外在互動或內在反思；S/N 描
 
 16Personalities 自述採用 NERIS 模型，重新調整 Big Five 面向，借用相似四字母格式並加入 A/T。**A/T 不是官方 MBTI 的新維度**。本站若接收 `INFP-T` 等輸入，只正規化四字母供配對使用，不把後綴當成官方 MBTI 類型。
 
-來源：[官方偏好](https://www.myersbriggs.org/my-mbti-personality-type/the-preferences/)、[官方類型動態](https://www.myersbriggs.org/unique-features-of-myers-briggs/type-dynamics-processes/)、[16Personalities 的模型自述](https://www.16personalities.com/articles/our-theory)。
+來源：[官方偏好](https://www.myersbriggs.org/my-mbti-personality-type/the-mbti-preferences/)、[官方類型動態](https://www.myersbriggs.org/unique-features-of-myers-briggs/type-dynamics-processes/)、[16Personalities 的模型自述](https://www.16personalities.com/articles/our-theory)。
 
 ## 16 型的內容編寫方向
 
