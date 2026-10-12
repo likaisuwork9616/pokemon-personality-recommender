@@ -61,11 +61,10 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('/static/js/recommendation.js?v=20260908-2', response.text)
         self.assertIn('/static/css/app.css?v=20260908-4', response.text)
         self.assertIn('id="public-trait-grid"', response.text)
-        self.assertIn("系統採用的人格特質", response.text)
-        self.assertIn('id="public-type-weight-status"', response.text)
-        self.assertIn("系統也有屬性參考權重", response.text)
-        self.assertIn("主屬性與副屬性", response.text)
-        self.assertNotIn('id="public-type-weight-grid"', response.text)
+        self.assertIn("MBTI 十六型人格", response.text)
+        self.assertIn("同一類型的人也會有不同個性", response.text)
+        self.assertNotIn("public-type-weight", response.text)
+        self.assertNotIn("PostgreSQL 人格詞庫", response.text)
         self.assertNotIn("data-example", response.text)
         self.assertNotIn("沉著守護型", response.text)
         self.assertNotIn("好奇冒險型", response.text)
@@ -80,8 +79,9 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn('fetch("/api/v1/personality/traits"', source)
         self.assertIn("generate_explanation: true", source)
         self.assertIn("publicTraitGrid.replaceChildren", source)
-        self.assertIn("payload.type_profile_count", source)
-        self.assertNotIn("payload.type_profiles", source)
+        self.assertIn("payload.catalog_version", source)
+        self.assertNotIn("payload.type_profile_count", source)
+        self.assertNotIn("payload.type_weight_version", source)
         self.assertNotIn("[data-example]", source)
         self.assertNotIn("dataset.example", source)
         self.assertNotIn("explainToggle", source)
@@ -192,11 +192,26 @@ class RecommendationWebTests(unittest.TestCase):
         self.assertIn("overflow-wrap: anywhere", trait_title_styles)
         self.assertIn("max-width: 100%", weighted_term_styles)
         self.assertIn("overflow-wrap: anywhere", weighted_term_text_styles)
-        self.assertIn(".public-type-weight-note", styles)
-        self.assertIn(".public-type-weight-badge", styles)
         self.assertIn(".recommendation-card.primary-result", styles)
         self.assertIn(".recommendation-alternatives-grid", styles)
         self.assertIn(".alternative-result-card", styles)
+
+    def test_mbti_cards_include_full_profiles_and_safe_research_sources(self):
+        source = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
+            encoding="utf-8"
+        )
+        for field in (
+            "summary", "information_style", "decision_style", "interaction_style",
+            "action_style", "strengths", "blind_spots", "stress_pattern", "growth_tips",
+            "source_urls", "reviewed_at",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, source)
+        self.assertIn('element("details", "public-trait-details")', source)
+        self.assertIn('new URL(source)', source)
+        self.assertIn('["http:", "https:"].includes(url.protocol)', source)
+        self.assertIn('link.rel = "noopener noreferrer"', source)
+        self.assertIn('payload.traits.length !== 16', source)
 
     def test_primary_and_alternative_images_remain_visible_on_narrow_screens(self):
         script = (ROOT / "app" / "static" / "js" / "recommendation.js").read_text(
