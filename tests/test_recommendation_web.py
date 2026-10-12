@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,27 @@ from app.main import create_app
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class FormContractParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fields: dict[str, dict[str, str | None]] = {}
+        self.mbti_options: list[str] = []
+        self.in_mbti_options = False
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag in {"input", "textarea"} and "id" in attributes:
+            self.fields[attributes["id"]] = attributes
+        if tag == "datalist" and attributes.get("id") == "mbti-options":
+            self.in_mbti_options = True
+        if tag == "option" and self.in_mbti_options:
+            self.mbti_options.append(attributes["value"])
+
+    def handle_endtag(self, tag):
+        if tag == "datalist":
+            self.in_mbti_options = False
 
 
 class RecommendationWebTests(unittest.TestCase):
@@ -85,6 +107,25 @@ class RecommendationWebTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
+
+    def test_mbti_is_optional_and_has_all_sixteen_valid_choices(self):
+        response = self.client.get("/")
+        parser = FormContractParser()
+        parser.feed(response.text)
+
+        self.assertIn("required", parser.fields["personality-text"])
+        self.assertEqual(parser.fields["personality-text"]["minlength"], "2")
+        self.assertEqual(parser.fields["personality-text"]["maxlength"], "2000")
+        self.assertNotIn("required", parser.fields["mbti-type"])
+        self.assertEqual(parser.fields["mbti-type"]["list"], "mbti-options")
+        self.assertEqual(
+            set(parser.mbti_options),
+            {i + s + t + j for i in "IE" for s in "SN" for t in "TF" for j in "JP"},
+        )
+        self.assertEqual(len(parser.mbti_options), 16)
+        self.assertEqual(parser.fields["mbti-type"]["aria-describedby"], "mbti-help mbti-error")
+        self.assertIn('id="mbti-error" class="mbti-error" role="alert" hidden', response.text)
+        self.assertIn("A／T 不參與計分", response.text)
 
     def test_public_pages_link_back_to_recommendation(self):
         for path in ("/pokemon", "/pokemon/1", "/admin"):

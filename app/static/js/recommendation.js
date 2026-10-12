@@ -5,6 +5,8 @@
   if (!form) return;
 
   const input = document.querySelector("#personality-text");
+  const mbtiInput = document.querySelector("#mbti-type");
+  const mbtiError = document.querySelector("#mbti-error");
   const submit = document.querySelector("#recommend-submit");
   const counter = document.querySelector("#character-count");
   const loading = document.querySelector("#recommendation-loading");
@@ -291,12 +293,28 @@
 
   const requestRecommendation = async () => {
     const text = input.value.trim();
-    if (text.length < 2) {
-      input.setCustomValidity("請輸入至少兩個字的個性描述。");
+    if (text.length < 2 || text.length > 2000) {
+      input.setCustomValidity("請輸入 2 至 2000 個字的個性描述。");
       input.reportValidity();
       return;
     }
     input.setCustomValidity("");
+    const normalizedMbti = (mbtiInput?.value || "").normalize("NFKC").trim().toUpperCase();
+    const mbtiMatch = /^([IE][SN][TF][JP])(?:-[AT])?$/.exec(normalizedMbti);
+    if (normalizedMbti && !mbtiMatch) {
+      const message = "請輸入有效的四字母 MBTI，例如 INFP，或留空。也接受 INFP-A／INFP-T。";
+      mbtiInput.setCustomValidity(message);
+      mbtiInput.setAttribute("aria-invalid", "true");
+      if (mbtiError) {
+        mbtiError.textContent = message;
+        mbtiError.hidden = false;
+      }
+      mbtiInput.focus();
+      mbtiInput.reportValidity();
+      return;
+    }
+    const mbti = mbtiMatch?.[1] || null;
+    if (mbtiInput) mbtiInput.value = normalizedMbti;
     activeController?.abort();
     activeController = new AbortController();
     submit.disabled = true;
@@ -314,6 +332,7 @@
         },
         body: JSON.stringify({
           text,
+          ...(mbti ? { mbti } : {}),
           generate_explanation: true,
         }),
         signal: activeController.signal,
@@ -339,6 +358,14 @@
   input.addEventListener("input", () => {
     input.setCustomValidity("");
     updateCounter();
+  });
+  mbtiInput?.addEventListener("input", () => {
+    mbtiInput.setCustomValidity("");
+    mbtiInput.removeAttribute("aria-invalid");
+    if (mbtiError) {
+      mbtiError.textContent = "";
+      mbtiError.hidden = true;
+    }
   });
   document.querySelector("#recommendation-retry")?.addEventListener(
     "click",

@@ -48,6 +48,22 @@
           <span>寫得越具體，契合分析越貼近你</span>
           <span id="character-count">0 / 2000</span>
         </div>
+        <label class="field mbti-field" for="mbti-type">
+          <span>你的 MBTI <small>選填</small></span>
+          <input id="mbti-type" name="mbti" type="text" list="mbti-options" autocomplete="off" spellcheck="false" aria-describedby="mbti-help mbti-error" placeholder="例如 INFP；不知道可以留空">
+        </label>
+        <datalist id="mbti-options">
+          <option value="ISTJ"></option><option value="ISFJ"></option>
+          <option value="INFJ"></option><option value="INTJ"></option>
+          <option value="ISTP"></option><option value="ISFP"></option>
+          <option value="INFP"></option><option value="INTP"></option>
+          <option value="ESTP"></option><option value="ESFP"></option>
+          <option value="ENFP"></option><option value="ENTP"></option>
+          <option value="ESTJ"></option><option value="ESFJ"></option>
+          <option value="ENFJ"></option><option value="ENTJ"></option>
+        </datalist>
+        <p id="mbti-help" class="mbti-help">以你的個性描述為主，MBTI 作為輔助。可輸入 INFP-T 等形式，A／T 不參與計分；留空也能正常配對。</p>
+        <p id="mbti-error" class="mbti-error" role="alert" hidden></p>
         <p class="privacy-note"><span aria-hidden="true">●</span> 原始文字與 query vector 不寫入 PostgreSQL 或瀏覽器儲存空間；若伺服器啟用外部 AI，文字與本次證據會送往設定的服務產生契合分析。</p>
         <button id="recommend-submit" class="button button-primary recommendation-submit" type="submit">
           <span>找出最像我的寶可夢</span><span aria-hidden="true">→</span>
