@@ -499,7 +499,8 @@ class AdminApiTests(unittest.TestCase):
         page = self.client.get("/admin")
         self.assertEqual(page.status_code, 200)
         self.assertIn('id="admin-login-form"', page.text)
-        self.assertIn('id="vocabulary-synonym-form"', page.text)
+        self.assertIn('id="admin-mbti-select"', page.text)
+        self.assertNotIn('id="vocabulary-synonym-form"', page.text)
         self.assertIn('/static/js/admin.js', page.text)
 
         paths = self.application.openapi()["paths"]

@@ -7,9 +7,7 @@
     totalPages: 1,
     selected: null,
     reindexTimer: null,
-    traits: [],
-    vocabularyTraitCode: "",
-    vocabularySnapshot: null,
+    mbtiProfiles: [],
   };
   const byId = (id) => document.getElementById(id);
   const loginPanel = byId("admin-login-panel");
@@ -43,15 +41,13 @@
     dashboard.hidden = false;
     byId("admin-logout").hidden = false;
     loadList();
-    loadVocabulary();
+    loadMbtiCatalog();
   };
 
   const showLogin = () => {
     state.csrf = "";
     state.selected = null;
-    state.traits = [];
-    state.vocabularyTraitCode = "";
-    state.vocabularySnapshot = null;
+    state.mbtiProfiles = [];
     loginPanel.hidden = false;
     dashboard.hidden = true;
     byId("admin-logout").hidden = true;
@@ -286,234 +282,114 @@
     return payload;
   };
 
-  const selectedTrait = () =>
-    state.traits.find((item) => item.code === byId("vocabulary-trait-select").value) || null;
-
-  const normalizeText = (value) => String(value ?? "").trim();
-  const normalizeTerm = (value) => normalizeText(value).normalize("NFKC");
-  const normalizeWeight = (value) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const synonymStateFromRow = (row) => ({
-    originalTerm: normalizeTerm(row.dataset.originalTerm),
-    term: normalizeTerm(row.querySelector('[data-synonym-field="term"]').value),
-    languageCode: normalizeText(row.querySelector('[data-synonym-field="language"]').value),
-    weight: normalizeWeight(row.querySelector('[data-synonym-field="weight"]').value),
-    isActive: row.dataset.active === "true",
-  });
-
-  const captureVocabularyState = () => ({
-    traitCode: state.vocabularyTraitCode,
-    traitName: normalizeText(byId("vocabulary-trait-name").value),
-    newSynonym: {
-      term: normalizeTerm(byId("vocabulary-new-term").value),
-      languageCode: normalizeText(byId("vocabulary-new-language").value),
-      weight: normalizeWeight(byId("vocabulary-new-weight").value),
-    },
-    synonyms: Array.from(
-      byId("vocabulary-synonyms").querySelectorAll("tr[data-original-term]"),
-      synonymStateFromRow,
-    ),
-  });
-
-  const serializedVocabularyState = () => JSON.stringify(captureVocabularyState());
-
-  const isVocabularyDirty = () =>
-    state.vocabularySnapshot !== null
-    && serializedVocabularyState() !== JSON.stringify(state.vocabularySnapshot);
-
-  const confirmVocabularyDiscard = (action) =>
-    !isVocabularyDirty()
-    || window.confirm(`人格詞庫尚有未儲存的變更。${action}會捨棄這些內容，確定要繼續嗎？`);
-
-  const commitTraitSnapshot = () => {
-    if (state.vocabularySnapshot) {
-      state.vocabularySnapshot.traitName = normalizeText(byId("vocabulary-trait-name").value);
+  const mbtiSection = (label, value) => {
+    const section = document.createElement("section");
+    const heading = document.createElement("h4");
+    heading.textContent = label;
+    section.append(heading);
+    if (Array.isArray(value)) {
+      const list = document.createElement("ul");
+      value.forEach((item) => {
+        const entry = document.createElement("li");
+        entry.textContent = item;
+        list.append(entry);
+      });
+      section.append(list);
+    } else {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = value;
+      section.append(paragraph);
     }
+    return section;
   };
 
-  const commitNewSynonymSnapshot = () => {
-    if (state.vocabularySnapshot) {
-      state.vocabularySnapshot.newSynonym = captureVocabularyState().newSynonym;
-    }
-  };
-
-  const commitSynonymSnapshot = (previousTerm, row) => {
-    if (!state.vocabularySnapshot) return;
-    const previousKey = normalizeTerm(previousTerm);
-    const index = state.vocabularySnapshot.synonyms.findIndex(
-      (item) => item.originalTerm === previousKey,
-    );
-    const current = synonymStateFromRow(row);
-    if (index === -1) state.vocabularySnapshot.synonyms.push(current);
-    else state.vocabularySnapshot.synonyms[index] = current;
-  };
-
-  const replaceTraitSynonym = (trait, previousTerm, updated) => {
-    const index = trait.synonyms.findIndex((item) => item.term === previousTerm);
-    if (index === -1) trait.synonyms.push(updated);
-    else trait.synonyms[index] = updated;
-  };
-
-  const applySynonymToRow = (row, synonym) => {
-    row.dataset.originalTerm = synonym.term;
-    row.dataset.active = String(synonym.is_active);
-    row.querySelector('[data-synonym-field="term"]').value = synonym.term;
-    row.querySelector('[data-synonym-field="language"]').value = synonym.language_code;
-    row.querySelector('[data-synonym-field="weight"]').value = String(synonym.weight);
-    row.querySelector('[data-synonym-status]').textContent = synonym.is_active ? "啟用" : "停用";
-    row.querySelector('[data-synonym-toggle]').textContent = synonym.is_active ? "停用" : "恢復";
-  };
-
-  const setSynonymRowBusy = (row, busy) => {
-    row.querySelectorAll("input, button").forEach((control) => {
-      control.disabled = busy;
-    });
-  };
-
-  const saveSynonymRow = async (row, trait, nextActive = null) => {
-    const term = row.querySelector('[data-synonym-field="term"]');
-    const language = row.querySelector('[data-synonym-field="language"]');
-    const weight = row.querySelector('[data-synonym-field="weight"]');
-    if (![term, language, weight].every((input) => input.reportValidity())) return;
-
-    const previousTerm = row.dataset.originalTerm;
-    const wasActive = row.dataset.active === "true";
-    const payload = {
-      original_term: previousTerm,
-      term: term.value.trim(),
-      language_code: language.value.trim(),
-      weight: Number(weight.value),
-    };
-    if (nextActive !== null) payload.is_active = nextActive;
-
-    setSynonymRowBusy(row, true);
-    try {
-      const updated = await api(
-        `/personality/traits/${encodeURIComponent(trait.code)}/synonyms`,
-        { method: "PATCH", body: JSON.stringify(payload) },
-      );
-      replaceTraitSynonym(trait, previousTerm, updated);
-      applySynonymToRow(row, updated);
-      commitSynonymSnapshot(previousTerm, row);
-      setStatus(
-        nextActive === null
-          ? `已更新同義詞「${updated.term}」。`
-          : `已${wasActive ? "停用" : "恢復"}「${updated.term}」。`,
-      );
-    } catch (error) {
-      setStatus(error.message, true);
-    } finally {
-      setSynonymRowBusy(row, false);
-    }
-  };
-
-  const createSynonymRow = (trait, synonym) => {
-    const row = document.createElement("tr");
-    const termCell = document.createElement("td");
-    const languageCell = document.createElement("td");
-    const weightCell = document.createElement("td");
-    const statusCell = document.createElement("td");
-    const actionCell = document.createElement("td");
-    const term = document.createElement("input");
-    const language = document.createElement("input");
-    const weight = document.createElement("input");
-    const save = document.createElement("button");
-    const toggle = document.createElement("button");
-
-    term.dataset.synonymField = "term";
-    term.maxLength = 80;
-    term.required = true;
-    term.ariaLabel = "同義詞";
-    language.dataset.synonymField = "language";
-    language.maxLength = 10;
-    language.required = true;
-    language.ariaLabel = "語言代碼";
-    weight.dataset.synonymField = "weight";
-    weight.type = "number";
-    weight.min = "0.01";
-    weight.max = "5";
-    weight.step = "0.01";
-    weight.required = true;
-    weight.ariaLabel = "同義詞權重";
-    statusCell.dataset.synonymStatus = "";
-    save.type = "button";
-    toggle.type = "button";
-    save.className = "button button-ghost button-small";
-    toggle.className = "button button-ghost button-small";
-    save.textContent = "儲存";
-    toggle.dataset.synonymToggle = "";
-    save.addEventListener("click", () => saveSynonymRow(row, trait));
-    toggle.addEventListener("click", () => {
-      saveSynonymRow(row, trait, row.dataset.active !== "true");
-    });
-
-    termCell.append(term);
-    languageCell.append(language);
-    weightCell.append(weight);
-    actionCell.append(save, toggle);
-    row.append(termCell, languageCell, weightCell, statusCell, actionCell);
-    applySynonymToRow(row, synonym);
-    return row;
-  };
-
-  const appendSynonymRow = (trait, synonym) => {
-    const body = byId("vocabulary-synonyms");
-    if (!body.querySelector("tr[data-original-term]")) body.replaceChildren();
-    const row = createSynonymRow(trait, synonym);
-    body.append(row);
-    return row;
-  };
-
-  const renderVocabularyTrait = () => {
-    const trait = selectedTrait();
-    if (!trait) return;
-    state.vocabularyTraitCode = trait.code;
-    byId("vocabulary-trait-code").value = trait.code;
-    byId("vocabulary-vector-index").value = String(trait.vector_index);
-    byId("vocabulary-trait-name").value = trait.name_zh;
-    byId("vocabulary-synonym-form").reset();
-    const rows = trait.synonyms.map((synonym) => createSynonymRow(trait, synonym));
-    const body = byId("vocabulary-synonyms");
-    body.replaceChildren(...rows);
-    if (!rows.length) {
+  const renderMbtiProfile = () => {
+    const profile = state.mbtiProfiles.find((item) => item.code === byId("admin-mbti-select").value);
+    if (!profile) return;
+    const heading = document.createElement("h3");
+    heading.textContent = `${profile.code} · ${profile.name_zh}`;
+    const summary = document.createElement("p");
+    summary.textContent = profile.summary;
+    const reviewed = document.createElement("p");
+    reviewed.className = "muted";
+    reviewed.textContent = `此類型查證日期：${profile.reviewed_at}`;
+    const grid = document.createElement("div");
+    grid.className = "mbti-detail-grid";
+    [
+      ["資訊處理", profile.information_style],
+      ["決策風格", profile.decision_style],
+      ["互動方式", profile.interaction_style],
+      ["行動節奏", profile.action_style],
+      ["優勢", profile.strengths],
+      ["可能需要留意", profile.blind_spots],
+      ["壓力下的可能傾向", profile.stress_pattern],
+      ["成長建議", profile.growth_tips],
+    ].forEach(([label, value]) => grid.append(mbtiSection(label, value)));
+    byId("admin-mbti-details").replaceChildren(heading, summary, reviewed, grid);
+    byId("admin-mbti-terms").replaceChildren(...profile.weighted_terms.map((item) => {
       const row = document.createElement("tr");
-      const cell = document.createElement("td");
-      cell.colSpan = 5;
-      cell.textContent = "目前沒有同義詞。";
-      row.append(cell);
-      body.append(row);
-    }
-    state.vocabularySnapshot = captureVocabularyState();
+      const term = document.createElement("td");
+      const weight = document.createElement("td");
+      term.textContent = item.term;
+      weight.textContent = String(item.weight);
+      row.append(term, weight);
+      return row;
+    }));
+    const sources = [];
+    profile.source_urls.forEach((value) => {
+      try {
+        const url = new URL(value);
+        if (url.protocol !== "https:") return;
+        const entry = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = url.href;
+        link.textContent = url.hostname + url.pathname;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        entry.append(link);
+        sources.push(entry);
+      } catch (_) {
+        // Skip malformed references instead of inserting an unsafe link.
+      }
+    });
+    byId("admin-mbti-sources").replaceChildren(...sources);
+    byId("admin-mbti-status").textContent = `正在查看 ${profile.code}，共 16 型。`;
   };
 
-  const loadVocabulary = async (selectedCode = "") => {
-    if (!confirmVocabularyDiscard("重新載入人格詞庫")) return false;
-    const stateBeforeRequest = serializedVocabularyState();
+  const loadMbtiCatalog = async () => {
+    const select = byId("admin-mbti-select");
+    const reload = byId("admin-mbti-reload");
+    const previous = select.value;
+    select.disabled = true;
+    reload.disabled = true;
+    byId("admin-mbti-status").textContent = "正在載入 MBTI 介紹…";
     try {
-      const previous = selectedCode || state.vocabularyTraitCode || byId("vocabulary-trait-select").value;
-      const traits = await api("/personality/traits");
-      if (
-        state.vocabularySnapshot !== null
-        && serializedVocabularyState() !== stateBeforeRequest
-        && !confirmVocabularyDiscard("重新載入人格詞庫")
-      ) return false;
-      state.traits = traits;
-      const select = byId("vocabulary-trait-select");
-      select.replaceChildren(...state.traits.map((trait) => {
+      const catalog = await api("/personality/traits");
+      if (!Array.isArray(catalog.traits) || catalog.traits.length !== 16) {
+        throw new Error("MBTI 介紹資料不完整，請重新載入。");
+      }
+      state.mbtiProfiles = catalog.traits;
+      select.replaceChildren(...state.mbtiProfiles.map((profile) => {
         const option = document.createElement("option");
-        option.value = trait.code;
-        option.textContent = `${trait.vector_index}. ${trait.name_zh}`;
+        option.value = profile.code;
+        option.textContent = `${profile.code} · ${profile.name_zh}`;
         return option;
       }));
-      if (state.traits.some((trait) => trait.code === previous)) select.value = previous;
-      renderVocabularyTrait();
-      return true;
+      if (state.mbtiProfiles.some((profile) => profile.code === previous)) select.value = previous;
+      byId("admin-mbti-version").textContent =
+        `版本 ${catalog.catalog_version} · 修訂 ${catalog.revision} · 查證日期 ${catalog.reviewed_at}`;
+      select.disabled = false;
+      renderMbtiProfile();
     } catch (error) {
-      setStatus(error.message, true);
-      return false;
+      state.mbtiProfiles = [];
+      select.replaceChildren();
+      byId("admin-mbti-details").replaceChildren();
+      byId("admin-mbti-terms").replaceChildren();
+      byId("admin-mbti-sources").replaceChildren();
+      byId("admin-mbti-version").textContent = "";
+      byId("admin-mbti-status").textContent = error.message;
+    } finally {
+      reload.disabled = false;
     }
   };
 
@@ -562,70 +438,8 @@
     }
   });
 
-  byId("vocabulary-trait-select").addEventListener("change", (event) => {
-    if (!confirmVocabularyDiscard("切換人格特質")) {
-      event.target.value = state.vocabularyTraitCode;
-      return;
-    }
-    renderVocabularyTrait();
-  });
-  byId("vocabulary-trait-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const trait = selectedTrait();
-    if (!trait) return;
-    const nameInput = byId("vocabulary-trait-name");
-    if (!nameInput.reportValidity()) return;
-    const submit = event.submitter;
-    nameInput.readOnly = true;
-    if (submit) submit.disabled = true;
-    try {
-      const updated = await api(`/personality/traits/${encodeURIComponent(trait.code)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name_zh: nameInput.value.trim() }),
-      });
-      trait.name_zh = updated.name_zh;
-      nameInput.value = updated.name_zh;
-      const option = Array.from(byId("vocabulary-trait-select").options)
-        .find((item) => item.value === trait.code);
-      if (option) option.textContent = `${trait.vector_index}. ${updated.name_zh}`;
-      commitTraitSnapshot();
-      setStatus("人格特質名稱已更新。");
-    } catch (error) {
-      setStatus(error.message, true);
-    } finally {
-      nameInput.readOnly = false;
-      if (submit) submit.disabled = false;
-    }
-  });
-  byId("vocabulary-synonym-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const trait = selectedTrait();
-    if (!trait) return;
-    const form = event.currentTarget;
-    const controls = Array.from(form.querySelectorAll("input, button"));
-    controls.forEach((control) => { control.disabled = true; });
-    try {
-      const term = byId("vocabulary-new-term").value.trim();
-      const created = await api(`/personality/traits/${encodeURIComponent(trait.code)}/synonyms`, {
-        method: "POST",
-        body: JSON.stringify({
-          term,
-          language_code: byId("vocabulary-new-language").value.trim(),
-          weight: Number(byId("vocabulary-new-weight").value),
-        }),
-      });
-      trait.synonyms.push(created);
-      byId("vocabulary-new-term").value = "";
-      const row = appendSynonymRow(trait, created);
-      commitSynonymSnapshot(created.term, row);
-      commitNewSynonymSnapshot();
-      setStatus(`已加入同義詞「${created.term || term}」。`);
-    } catch (error) {
-      setStatus(error.message, true);
-    } finally {
-      controls.forEach((control) => { control.disabled = false; });
-    }
-  });
+  byId("admin-mbti-select").addEventListener("change", renderMbtiProfile);
+  byId("admin-mbti-reload").addEventListener("click", loadMbtiCatalog);
 
   byId("admin-reindex").addEventListener("click", async () => {
     if (!state.selected) return;
@@ -652,7 +466,6 @@
   byId("admin-new").addEventListener("click", resetEditor);
   byId("admin-cancel").addEventListener("click", resetEditor);
   byId("admin-logout").addEventListener("click", async () => {
-    if (!confirmVocabularyDiscard("登出後台")) return;
     const logout = byId("admin-logout");
     logout.disabled = true;
     dashboard.inert = true;
@@ -663,14 +476,6 @@
       logout.disabled = false;
       showLogin();
     }
-  });
-
-  window.addEventListener("beforeunload", (event) => {
-    if (!isVocabularyDirty()) return;
-    const message = "人格詞庫尚有未儲存的變更。離開頁面會捨棄這些內容。";
-    event.preventDefault();
-    event.returnValue = message;
-    return message;
   });
 
   api("/session").then(showDashboard).catch(showLogin);
