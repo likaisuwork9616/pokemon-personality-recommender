@@ -40,6 +40,7 @@ def load_cases(path: Path) -> list[EvaluationCase]:
                 case_id=str(payload["id"]),
                 query=str(payload["query"]),
                 relevance_judgments=relevance,
+                mbti=payload.get("mbti"),
             ))
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid evaluation case at line {line_number}") from exc

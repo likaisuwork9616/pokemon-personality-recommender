@@ -19,11 +19,11 @@
 
 ## 這個專案能做什麼
 
-- **人格推薦**：以自然語言描述個性、興趣或生活方式，取得穩定排序的 Top 3。
+- **人格推薦**：以自然語言描述個性、興趣或生活方式，選填 MBTI，取得穩定排序的 Top 3。
 - **可追溯解說**：每個結果保留 evidence lineage；外部模型只能整理已選出的證據，不能改排名。
 - **今日寶可夢**：依台北時間、國農曆、節氣、時辰與星座產生可重現的娛樂性每日匹配。
 - **完整圖鑑**：提供繁中搜尋、分頁、屬性、世代與特殊分類篩選。
-- **可維護後台**：支援 `viewer / editor / admin`、Audit Log、人格詞庫與安全 reindex。
+- **可維護後台**：支援 `viewer / editor / admin`、Audit Log、唯讀十六型 MBTI 詳細介紹與安全 reindex。
 - **可正式營運**：包含 PostgreSQL backup／restore、Prometheus、Grafana、Alertmanager、Caddy HTTPS、rate limit 與 immutable image rollback。
 
 推薦排序與文字生成彼此分離。即使沒有 Gemini／OpenAI key，Top 3、圖鑑證據與本機繁中契合分析仍可使用。
@@ -154,7 +154,7 @@ flowchart LR
     INPUT --> FTS[中文 FTS]
     DENSE --> RRF[RRF 融合]
     FTS --> RRF
-    RRF --> SCORE[人格與屬性加權]
+    RRF --> SCORE[行為親和與選填 MBTI 加權]
     SCORE --> TOP3[可重現 Top 3]
     TOP3 --> EVIDENCE[Evidence allowlist]
     EVIDENCE --> GEMINI[Gemini]
@@ -166,9 +166,11 @@ flowchart LR
 
 1. SentenceTransformer 建立 384 維 query vector。
 2. pgvector Dense Retrieval 與 jieba／PostgreSQL FTS 各自取候選。
-3. RRF 融合後，加入 16 維人格訊號與寶可夢屬性參考權重。
+3. RRF 融合後，以內建十六型 MBTI 詳細介紹建立行為親和向量；選填類型時加入輔助分，寶可夢屬性不參與人格計分。
 4. 以固定 tie-break 產生 Top 3；只有 Top 1 進入解說流程。
 5. Gemini、OpenAI 或本機 fallback 都只能引用該結果的 evidence，不能改排名與分數。
+
+`mbti` 可省略、留空或填 `null`；`INFP-T`／`INFP-A` 會正規化為 `INFP`，A／T 不參與計分。內建資料位於 `app/data/mbti_zh_hant.json`，不判定使用者或寶可夢的 MBTI。研究來源見 [MBTI 研究](docs/mbti-research.md)，資料庫接續清單見 [SQL 代辦清單](sql代辦清單.md)。
 
 完整資料流、分數公式、今日寶可夢與 reindex 設計見[系統架構與推薦流程](docs/architecture.md)。
 
@@ -181,6 +183,7 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
   --header "Content-Type: application/json" \
   --data '{
     "text": "我慢熟但重視承諾，也喜歡幫助朋友。",
+    "mbti": "INFP",
     "generate_explanation": false
   }'
 ```
@@ -194,7 +197,7 @@ curl --request POST http://localhost:8000/api/v1/recommendations \
 | `POST` | `/api/v1/recommendation-feedback` | 以匿名收據提交 bounded feedback |
 | `GET` | `/api/v1/pokemon` | 搜尋及瀏覽圖鑑 |
 | `GET` | `/api/v1/pokemon/{pokemon_id}` | 單一寶可夢詳細資料 |
-| `GET` | `/api/v1/personality/traits` | 公開人格詞彙與版本 |
+| `GET` | `/api/v1/personality/traits` | 公開十六型 MBTI 詳細介紹、研究來源與版本 |
 
 Web 人格推薦與今日寶可夢會要求 grounded 解說；如果伺服器設定了 provider key，可能產生付費 API 呼叫。所有 schema 以啟動後的 [Swagger UI](http://localhost:8000/docs) 為準。
 

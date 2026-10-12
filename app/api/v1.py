@@ -99,7 +99,7 @@ async def create_recommendation(
     engine = _engine(request)
     try:
         def run_recommendation() -> RecommendationResponse:
-            raw_results = engine.recommend(payload.text.strip(), top_k=3)
+            raw_results = engine.recommend(payload.text, top_k=3, mbti=payload.mbti)
             explanations: dict[int, dict[str, Any]] = {}
             if payload.generate_explanation:
                 top_result = raw_results[0]
@@ -114,9 +114,9 @@ async def create_recommendation(
                         )
                     }
             algorithm_version = (
-                    "pgvector-fts-rrf-cross-encoder-v1"
+                    "mbti-hybrid-cross-encoder-v2"
                     if getattr(engine, "reranker", None) is not None
-                    else "pgvector-fts-rrf-v1"
+                    else "mbti-hybrid-v2"
                 )
             response = RecommendationResponse(
                 algorithm_version=algorithm_version,

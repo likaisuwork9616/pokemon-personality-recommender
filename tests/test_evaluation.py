@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+import json
+from tempfile import TemporaryDirectory
 
 from app.services.evaluation import EvaluationCase, evaluate_recommendations
 from scripts.evaluate_recommendations import load_cases
@@ -16,13 +18,31 @@ class _Engine:
         "two": [8, 7, 6, 5],
     }
 
-    def recommend(self, query, top_k=10):
+    def recommend(self, query, top_k=10, *, mbti=None):
         values = self.rankings[query]
         values = (values * 3)[:top_k]
         return [{"pokedex_number": value} for value in values]
 
 
 class EvaluationTests(unittest.TestCase):
+    def test_optional_mbti_is_loaded_normalized_and_passed_to_engine(self):
+        payload = {"id": "selected", "query": "個性文字", "mbti": " infp-t ", "relevant_pokedex_numbers": [1]}
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cases.jsonl"
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            cases = load_cases(path)
+        calls = []
+        class Engine:
+            def recommend(self, query, top_k, *, mbti):
+                calls.append((query, top_k, mbti))
+                return [{"pokedex_number": number} for number in (1, 2, 3)]
+        report = evaluate_recommendations(Engine(), cases, retrieval_k=3)
+        self.assertEqual(calls, [("個性文字", 3, "INFP")])
+        self.assertNotIn("個性文字", repr(report))
+        self.assertNotIn("INFP", repr(report))
+        with self.assertRaises(ValueError):
+            EvaluationCase("invalid", "one", frozenset({1}), mbti="ABCD")
+
     def test_report_calculates_retrieval_and_top_three_metrics_without_queries(self):
         cases = [
             EvaluationCase("a", "one", {1: 3, 2: 1}),

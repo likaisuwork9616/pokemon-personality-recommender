@@ -32,7 +32,7 @@ class TodayPokemonWebTests(unittest.TestCase):
         self.assertIn('id="today-results"', response.text)
         self.assertIn("僅供娛樂與自我反思", response.text)
         self.assertIn("/static/js/today_pokemon.js?v=20260929-2", response.text)
-        self.assertIn("/static/css/app.css?v=20260929-4", response.text)
+        self.assertIn("/static/css/app.css?v=20261012-mbti1", response.text)
 
     def test_client_uses_shareable_query_without_browser_persistence_or_html_injection(self):
         source = (ROOT / "app" / "static" / "js" / "today_pokemon.js").read_text(

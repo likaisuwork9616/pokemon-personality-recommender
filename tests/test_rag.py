@@ -46,11 +46,11 @@ def _result(number: int) -> dict[str, object]:
                 "lexical_rank": number,
                 "lexical_score": 0.4,
                 "rrf_score": 2 / (60 + number),
-                "matched_traits": ["忠誠守護者"],
+                "matched_traits": ["守護", "安靜"],
             }
         ],
-        "user_traits": ["忠誠守護者", "孤獨思考者"],
-        "pokemon_traits": ["忠誠守護者", "溫柔照顧者"],
+        "user_traits": ["守護", "獨處"],
+        "pokemon_traits": ["守護", "安靜"],
         "type_weight_signals": {
             "version": "type-persona-v1",
             "combination_rule": "主屬性與副屬性原始權重相加後再正規化",
@@ -211,15 +211,57 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertIn(injection, prompt)
         self.assertIn(f"ev_{1:032x}", prompt)
         self.assertIn('"persona_signals"', prompt)
-        self.assertIn('"pokemon_profile"', prompt)
-        self.assertIn('"type_weight_signals"', prompt)
-        self.assertIn('"忠誠守護者":1.3', prompt)
-        self.assertIn("寶可夢1會耐心陪伴並守護重要的夥伴", prompt)
+        self.assertNotIn('"pokemon_profile"', prompt)
+        self.assertNotIn('"type_weight_signals"', prompt)
+        self.assertNotIn('"忠誠守護者":1.3', prompt)
+        self.assertNotIn("寶可夢1會耐心陪伴並守護重要的夥伴", prompt)
+        self.assertIn("寶可夢1會安靜守護夥伴", prompt)
+        self.assertNotIn("selected_mbti_reference", prompt)
 
     def test_system_instruction_requires_internalized_traditional_chinese_analysis(self):
         self.assertIn("internalizes and paraphrases", SYSTEM_INSTRUCTION)
         self.assertIn("Translate English evidence", SYSTEM_INSTRUCTION)
         self.assertIn("Never dump a raw Pokédex passage", SYSTEM_INSTRUCTION)
+
+    def test_selected_mbti_reference_is_optional_and_not_pokemon_evidence(self):
+        self.results[0].update(selected_mbti="INFP", mbti_profile={"summary": "重視個人價值與真誠"})
+        prompt = GroundedExplanationService._build_prompt("我喜歡獨處", [self.results[0]])
+        self.assertIn('"selected_mbti_reference"', prompt)
+        self.assertIn('"code":"INFP"', prompt)
+        explanation = GroundedExplanationService().explain_many("我喜歡獨處", [self.results[0]])[1]
+        self.assertIn("你選填的 INFP", explanation.text)
+        self.assertNotIn("寶可夢1是 INFP", explanation.text)
+
+    def test_provider_inferred_type_without_selection_is_rejected(self):
+        bundle = _bundle()
+        bundle.explanations[0].text = "你的性格看起來是 INFP，這隻寶可夢很適合與你安靜相伴並守護夥伴。"
+        explanations = GroundedExplanationService(_Provider(bundle)).explain_many("我重視朋友", self.results)
+        self.assertEqual(explanations[1].provider, "local")
+        self.assertNotIn("INFP", explanations[1].text)
+
+    def test_fullwidth_inferred_or_different_type_is_rejected(self):
+        for selected in (None, "INTJ"):
+            with self.subTest(selected=selected):
+                results = [_result(1)]
+                results[0]["selected_mbti"] = selected
+                bundle = LLMExplanationBundle.model_validate({"explanations": [{
+                    "pokemon_id": 1,
+                    "text": "你其實屬於 ＩＮＦＰ 人格，這隻寶可夢也有相同個性，因此與你相當契合。",
+                    "citations": [f"ev_{1:032x}"],
+                }]})
+                explanation = GroundedExplanationService(_Provider(bundle)).explain_many("我重視朋友", results)[1]
+                self.assertEqual(explanation.provider, "local")
+                self.assertNotIn("ＩＮＦＰ", explanation.text)
+
+    def test_local_fallback_ignores_unindexed_descriptions_and_old_weights(self):
+        self.results[0]["desc"] = "未索引秘密：能看穿未來並瞬間移動。"
+        self.results[0]["analysis_text"] = "未索引秘密：會偷取金幣。"
+        explanation = GroundedExplanationService().explain_many("我重視朋友", [self.results[0]])[1]
+        self.assertNotIn("未索引秘密", explanation.text)
+        self.assertNotIn("偷取", explanation.text)
+        self.assertNotIn("屬性", explanation.text)
+        self.assertIn("安靜守護夥伴", explanation.text)
+        self.assertEqual(explanation.citations, (f"ev_{1:032x}",))
 
     def test_invalid_citation_malformed_output_and_timeout_use_local_fallback(self):
         providers = (
@@ -269,16 +311,18 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertEqual(explanation.citations, (f"ev_{1:032x}",))
         self.assertNotIn("原始查詢", explanation.text)
         self.assertNotIn("檢索證據指出", explanation.text)
-        self.assertIn("忠誠守護者", explanation.text)
+        self.assertIn("守護", explanation.text)
         self.assertIn("圖鑑資料", explanation.text)
-        self.assertIn("屬性參考權重", explanation.text)
-        self.assertIn("共同展現", explanation.text)
+        self.assertNotIn("屬性參考權重", explanation.text)
+        self.assertIn("都提到", explanation.text)
+        self.assertNotIn("INFP", explanation.text)
 
     def test_local_analysis_never_displays_english_retrieval_text(self):
         self.results[0]["matching_evidence"][0].update(
             language_code="en",
             source="flavor_text_en",
             text="A rare Pokemon that brings happiness to people.",
+            matched_traits=[],
         )
 
         explanation = GroundedExplanationService().explain_many(
@@ -287,11 +331,11 @@ class GroundedExplanationTests(unittest.TestCase):
         )[1]
 
         self.assertNotIn("A rare Pokemon", explanation.text)
-        self.assertIn("圖鑑資料", explanation.text)
-        self.assertIn("忠誠守護者", explanation.text)
+        self.assertNotIn("耐心陪伴", explanation.text)
+        self.assertIn("外文為主", explanation.text)
 
     def test_local_analysis_prefers_behavior_over_physical_appearance(self):
-        self.results[0]["analysis_text"] = (
+        self.results[0]["matching_evidence"][0]["text"] = (
             "中文圖鑑描述：牠全身披著黃色的毛，眼睛呈現紅色。"
             "牠非常重視夥伴，會耐心合作並守護同伴。"
         )
@@ -447,7 +491,7 @@ class RagApiTests(unittest.TestCase):
                 self.explained_ids = []
 
             @staticmethod
-            def recommend(_text, top_k=3):
+            def recommend(_text, top_k=3, *, mbti=None):
                 return [_result(number) for number in range(1, top_k + 1)]
 
             def explain_results(self, _text, results):

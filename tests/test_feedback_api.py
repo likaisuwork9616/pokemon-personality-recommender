@@ -47,7 +47,7 @@ class FakeFeedbackService:
             "by_reason": {"no_reason": 3, "personality_mismatch": 3},
             "by_algorithm": [
                 {
-                    "algorithm_version": "pgvector-fts-rrf-v1",
+                    "algorithm_version": "mbti-hybrid-v2",
                     "feedback_count": 6,
                     "match_rate": 0.5,
                 }
@@ -89,7 +89,7 @@ class FeedbackApiTests(unittest.TestCase):
             self.service.impressions,
             [
                 {
-                    "algorithm_version": "pgvector-fts-rrf-v1",
+                    "algorithm_version": "mbti-hybrid-v2",
                     "ranked_pokemon": [(1, 1), (2, 2), (3, 3)],
                 }
             ],

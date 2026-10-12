@@ -5,6 +5,8 @@
   if (!form) return;
 
   const input = document.querySelector("#personality-text");
+  const mbtiInput = document.querySelector("#mbti-type");
+  const mbtiError = document.querySelector("#mbti-error");
   const submit = document.querySelector("#recommend-submit");
   const counter = document.querySelector("#character-count");
   const loading = document.querySelector("#recommendation-loading");
@@ -17,7 +19,6 @@
   const publicTraitGrid = document.querySelector("#public-trait-grid");
   const publicTraitStatus = document.querySelector("#public-trait-status");
   const publicTraitRevision = document.querySelector("#public-trait-revision");
-  const publicTypeWeightStatus = document.querySelector("#public-type-weight-status");
   let activeController = null;
 
   const element = (tagName, className, content) => {
@@ -82,7 +83,7 @@
     return row;
   };
 
-  const explanationCard = (explanation) => {
+  const explanationCard = (explanation, mbti) => {
     const section = element("section", "explanation-card");
     const heading = element("div", "explanation-heading");
     heading.append(
@@ -104,7 +105,7 @@
       element(
         "p",
         "analysis-source",
-        `已融合人格、屬性權重與 ${citationCount} 段圖鑑依據`,
+        `已比對個性描述${mbti ? `、${mbti} 行為參考` : ""}與 ${citationCount} 段圖鑑依據`,
       ),
     );
     return section;
@@ -181,7 +182,7 @@
     return panel;
   };
 
-  const resultCard = (result, recommendationId) => {
+  const resultCard = (result, mbti, recommendationId) => {
     const pokemon = result.pokemon;
     const card = element("article", `recommendation-card primary-result rank-${result.rank}`);
     const heading = element("div", "recommendation-card-heading");
@@ -210,12 +211,20 @@
     scores.setAttribute("aria-label", `${pokemon.name_zh} 匹配分數`);
     scores.append(
       scoreRow("總分", result.scores.total, true),
-      scoreRow("語意分數", result.scores.semantic),
+      scoreRow("文字檢索分", result.scores.semantic),
       scoreRow("人格分數", result.scores.personality),
     );
+    if (mbti && typeof result.scores.mbti === "number" && Number.isFinite(result.scores.mbti)) {
+      scores.append(scoreRow(`MBTI 輔助分（${mbti}）`, result.scores.mbti));
+    }
 
-    card.append(heading, typeList, scores);
-    if (result.explanation) card.append(explanationCard(result.explanation));
+    card.append(
+      heading,
+      typeList,
+      scores,
+      element("p", "score-note", "分數表示本次配對的相符程度，不是 MBTI 測驗結果、機率或能力評分。"),
+    );
+    if (result.explanation) card.append(explanationCard(result.explanation, mbti));
     const feedback = feedbackPanel(recommendationId, result);
     if (feedback) card.append(feedback);
     return card;
@@ -248,7 +257,7 @@
     return card;
   };
 
-  const renderResults = (payload) => {
+  const renderResults = (payload, mbti) => {
     if (
       !payload
       || !Array.isArray(payload.results)
@@ -258,7 +267,7 @@
       throw new Error("推薦結果格式不完整，請稍後再試。");
     }
     if (!alternatives) throw new Error("推薦結果容器不完整，請稍後再試。");
-    grid.replaceChildren(resultCard(payload.results[0], payload.recommendation_id));
+    grid.replaceChildren(resultCard(payload.results[0], mbti, payload.recommendation_id));
     alternatives.replaceChildren(
       ...payload.results.slice(1).map((item) => alternativeResultCard(item, payload.recommendation_id)),
     );
@@ -296,23 +305,63 @@
     const card = element("article", "public-trait-card");
     const heading = element("div", "public-trait-card-heading");
     heading.append(
-      element("h3", "", trait.name_zh || "未命名特質"),
-      element("span", "", `${terms.length} 個加權詞`),
+      element("h3", "", trait.name_zh || trait.code),
+      element("span", "", trait.code),
     );
 
     const preview = element("div", "public-trait-preview");
     preview.append(...terms.slice(0, 3).map(weightedTerm));
-    card.append(heading, preview);
+    card.append(heading, element("p", "public-trait-summary", trait.summary), preview);
 
-    if (terms.length > 3) {
-      const details = document.createElement("details");
-      details.className = "public-trait-details";
-      details.append(element("summary", "", "查看全部詞彙權重"));
-      const allTerms = element("div", "public-trait-terms");
-      allTerms.append(...terms.map(weightedTerm));
-      details.append(allTerms);
-      card.append(details);
+    const details = element("details", "public-trait-details");
+    details.append(element("summary", "", "展開個性、優勢與成長建議"));
+    const styles = element("dl", "public-trait-styles");
+    for (const [label, field] of [
+      ["資訊處理", "information_style"],
+      ["決策方式", "decision_style"],
+      ["人際互動", "interaction_style"],
+      ["行動節奏", "action_style"],
+      ["壓力反應", "stress_pattern"],
+    ]) {
+      styles.append(element("dt", "", label), element("dd", "", trait[field] || "未提供"));
     }
+    details.append(styles);
+    for (const [label, field] of [
+      ["優勢", "strengths"],
+      ["可能盲點", "blind_spots"],
+      ["成長建議", "growth_tips"],
+    ]) {
+      const list = element("ul", "public-trait-list");
+      const items = Array.isArray(trait[field]) ? trait[field] : [];
+      list.append(...items.map((item) => element("li", "", item)));
+      details.append(element("h4", "", label), list);
+    }
+    const allTerms = element("div", "public-trait-terms");
+    allTerms.append(...terms.map(weightedTerm));
+    details.append(element("h4", "", "配對行為參考詞"), allTerms);
+
+    const sources = element("ul", "public-trait-list public-trait-sources");
+    for (const source of Array.isArray(trait.source_urls) ? trait.source_urls : []) {
+      try {
+        const url = new URL(source);
+        if (!["http:", "https:"].includes(url.protocol)) continue;
+        const link = element("a", "", url.hostname);
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        const item = element("li");
+        item.append(link);
+        sources.append(item);
+      } catch (_error) {
+        // Ignore malformed source addresses rather than creating unsafe links.
+      }
+    }
+    details.append(
+      element("h4", "", "研究來源"),
+      sources,
+      element("p", "public-trait-reviewed", `查證日期：${trait.reviewed_at || "未提供"}`),
+    );
+    card.append(details);
     return card;
   };
 
@@ -323,42 +372,52 @@
         headers: { Accept: "application/json" },
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload.traits) || payload.traits.length === 0) {
-        throw new Error("invalid personality vocabulary response");
+      if (
+        !response.ok
+        || !Array.isArray(payload.traits)
+        || payload.traits.length !== 16
+        || payload.traits.some((trait) => !/^[IE][SN][TF][JP]$/.test(trait.code))
+        || new Set(payload.traits.map((trait) => trait.code)).size !== 16
+      ) {
+        throw new Error("invalid MBTI catalog response");
       }
       publicTraitGrid.replaceChildren(...payload.traits.map(publicTraitCard));
       publicTraitGrid.hidden = false;
-      publicTraitStatus.textContent = `目前啟用 ${payload.traits.length} 種人格特質；點開卡片可查看全部詞彙權重。`;
-      publicTraitRevision.textContent = `SQL 詞庫 v${payload.revision || "—"}`;
-
-      const typeProfileCount = Number(payload.type_profile_count);
-      if (publicTypeWeightStatus && Number.isInteger(typeProfileCount) && typeProfileCount > 0) {
-        publicTypeWeightStatus.textContent = `已啟用 ${typeProfileCount} 種 · ${payload.type_weight_version || "屬性規則"}`;
-      } else if (publicTypeWeightStatus) {
-        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
-        publicTypeWeightStatus.classList.add("is-error");
-      }
+      publicTraitStatus.textContent = `共 ${payload.traits.length} 型；展開各型可查看詳細個性、配對行為參考詞與研究來源。`;
+      publicTraitRevision.textContent = `內建 MBTI · ${payload.catalog_version || "—"} · 修訂 ${payload.revision || "—"}`;
     } catch (_error) {
       publicTraitGrid.replaceChildren();
       publicTraitGrid.hidden = true;
-      publicTraitStatus.textContent = "目前無法載入人格詞庫；推薦功能仍可正常使用。";
+      publicTraitStatus.textContent = "目前無法載入 MBTI 介紹；你仍可直接輸入個性描述進行配對。";
       publicTraitStatus.classList.add("is-error");
       publicTraitRevision.textContent = "暫時無法讀取";
-      if (publicTypeWeightStatus) {
-        publicTypeWeightStatus.textContent = "屬性參考權重暫時無法確認";
-        publicTypeWeightStatus.classList.add("is-error");
-      }
     }
   };
 
   const requestRecommendation = async () => {
     const text = input.value.trim();
-    if (text.length < 2) {
-      input.setCustomValidity("請輸入至少兩個字的個性描述。");
+    if (text.length < 2 || text.length > 2000) {
+      input.setCustomValidity("請輸入 2 至 2000 個字的個性描述。");
       input.reportValidity();
       return;
     }
     input.setCustomValidity("");
+    const normalizedMbti = (mbtiInput?.value || "").normalize("NFKC").trim().toUpperCase();
+    const mbtiMatch = /^([IE][SN][TF][JP])(?:-[AT])?$/.exec(normalizedMbti);
+    if (normalizedMbti && !mbtiMatch) {
+      const message = "請輸入有效的四字母 MBTI，例如 INFP，或留空。也接受 INFP-A／INFP-T。";
+      mbtiInput.setCustomValidity(message);
+      mbtiInput.setAttribute("aria-invalid", "true");
+      if (mbtiError) {
+        mbtiError.textContent = message;
+        mbtiError.hidden = false;
+      }
+      mbtiInput.focus();
+      mbtiInput.reportValidity();
+      return;
+    }
+    const mbti = mbtiMatch?.[1] || null;
+    if (mbtiInput) mbtiInput.value = normalizedMbti;
     activeController?.abort();
     activeController = new AbortController();
     submit.disabled = true;
@@ -376,13 +435,14 @@
         },
         body: JSON.stringify({
           text,
+          ...(mbti ? { mbti } : {}),
           generate_explanation: true,
         }),
         signal: activeController.signal,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(responseError(payload, response));
-      renderResults(payload);
+      renderResults(payload, mbti);
     } catch (error) {
       if (error.name === "AbortError") return;
       errorMessage.textContent = error.message || "請稍後再試。";
@@ -401,6 +461,14 @@
   input.addEventListener("input", () => {
     input.setCustomValidity("");
     updateCounter();
+  });
+  mbtiInput?.addEventListener("input", () => {
+    mbtiInput.setCustomValidity("");
+    mbtiInput.removeAttribute("aria-invalid");
+    if (mbtiError) {
+      mbtiError.textContent = "";
+      mbtiError.hidden = true;
+    }
   });
   document.querySelector("#recommendation-retry")?.addEventListener(
     "click",

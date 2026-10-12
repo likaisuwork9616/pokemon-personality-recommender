@@ -119,6 +119,7 @@ class EmbeddingServiceTests(unittest.TestCase):
 
     def test_database_profile_does_not_build_an_in_memory_corpus_embedding(self):
         row = {
+            "_database_id": 1,
             "pokedex_number": 1,
             "name_zh": "妙蛙種子",
             "name_en": "Bulbasaur",
@@ -137,14 +138,9 @@ class EmbeddingServiceTests(unittest.TestCase):
         ):
             profile = PokemonPersonalityProfile(
                 dataframe=pd.DataFrame([row]),
-                personality_traits=tuple(f"特質{index}" for index in range(16)),
-                persona_keywords={
-                    f"特質{index}": (f"關鍵字{index}",)
-                    for index in range(16)
-                },
             )
 
-        self.assertEqual(profile.persona_vectors.shape, (1, 16))
+        self.assertFalse(hasattr(profile, "persona_vectors"))
         self.assertFalse(hasattr(profile, "pokemon_embeddings"))
 
 

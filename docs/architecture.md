@@ -25,7 +25,7 @@ flowchart TB
     API --> FTS[PostgreSQL FTS + jieba]
     DENSE --> RRF[RRF 融合]
     FTS --> RRF
-    RRF --> SCORE[人格與屬性加權]
+    RRF --> SCORE[行為親和與選填 MBTI 加權]
     SCORE --> TOP3[穩定 Top 3]
 
     TOP3 --> PACKET[Evidence Packet]
@@ -55,7 +55,7 @@ PostgreSQL → Alembic migration → 匯入 1,025 筆 seed → 建立 embeddings
 服務啟動後，下列內容直接從 PostgreSQL 讀取：
 
 - 寶可夢與繁中圖鑑資料
-- 16 維人格特質、同義詞與權重
+- 已索引的寶可夢行為文字與向量（MBTI 介紹由版本化 JSON 載入）
 - knowledge documents、chunks 與 embeddings
 - current／staged index 狀態
 - 管理 Audit Log
@@ -71,17 +71,21 @@ CSV 移除或更名不影響已完成初始化的資料庫，但會讓新的空�
 3. pgvector Dense Retrieval 與中文全文搜尋各取候選 chunks。
 4. RRF（`k=60`）融合 Dense 與 Lexical 排名。
 5. 結果按寶可夢聚合，每隻最多保留三段證據，避免 chunk 數量灌票。
-6. SQL 人格詞庫把描述映射成 16 維訊號，再加入主、副屬性參考權重。
+6. 內建十六型 MBTI 詳細介紹形成 16 維行為親和向量。選填 MBTI 時，另外召回該類型候選並加入輔助分；不使用寶可夢屬性推定人格。
 7. 以寶可夢 ID 作最終 tie-break，產生可重現的 Top 3。
 8. 只有 Top 1 進入 Grounded RAG；說明生成不能改變排名。
 
 ### 分數融合
 
 ```text
-total = α × personality + (1 - α) × semantic
+type_affinity = 0.80 × detailed_description_cosine + 0.20 × weighted_keyword_coverage
+personality = cosine(user_affinity_16d, pokemon_affinity_16d)
+text_match = 0.75 × semantic + 0.25 × personality
+total (有 MBTI) = 0.75 × text_match + 0.25 × selected_type_affinity
+total (無 MBTI) = text_match
 ```
 
-`α` 依辨識到的人格訊號調整，範圍為 `0.35–0.80`。Cross-Encoder 位於融合後的選配實驗路徑；目前版本化 CPU benchmark 未同時通過品質與延遲門檻，因此預設關閉。
+缺少任一側行為訊號時，`text_match = semantic`。推薦使用唯讀 repeatable-read 快照，說明僅引用當次召回的證據。Cross-Encoder 位於融合後的選配實驗路徑；目前版本化 CPU benchmark 未同時通過品質與延遲門檻，因此預設關閉。
 
 ### Evidence lineage
 
