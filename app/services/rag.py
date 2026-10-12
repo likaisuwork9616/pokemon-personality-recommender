@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import json
 import os
 import re
+import unicodedata
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -352,7 +353,8 @@ class GroundedExplanationService:
                 raise ValueError("provider cited evidence outside the allowlist")
             if not GroundedExplanationService._is_chinese_analysis(item.text):
                 raise ValueError("provider explanation is not a synthesized Chinese analysis")
-            mentioned = re.findall(r"(?<![A-Za-z])[EI][SN][TF][JP](?:-[AT])?(?![A-Za-z])", item.text, re.IGNORECASE)
+            normalized_text = unicodedata.normalize("NFKC", item.text)
+            mentioned = re.findall(r"(?<![A-Za-z])[EI][SN][TF][JP](?:-[AT])?(?![A-Za-z])", normalized_text, re.IGNORECASE)
             allowed_type = (selected or {}).get(item.pokemon_id)
             if any(normalize_mbti(code) != allowed_type for code in mentioned):
                 raise ValueError("provider inferred an unselected MBTI type")
