@@ -210,6 +210,20 @@ class GroundedExplanationTests(unittest.TestCase):
         self.assertEqual(explanations[1].provider, "local")
         self.assertNotIn("INFP", explanations[1].text)
 
+    def test_fullwidth_inferred_or_different_type_is_rejected(self):
+        for selected in (None, "INTJ"):
+            with self.subTest(selected=selected):
+                results = [_result(1)]
+                results[0]["selected_mbti"] = selected
+                bundle = LLMExplanationBundle.model_validate({"explanations": [{
+                    "pokemon_id": 1,
+                    "text": "你其實屬於 ＩＮＦＰ 人格，這隻寶可夢也有相同個性，因此與你相當契合。",
+                    "citations": [f"ev_{1:032x}"],
+                }]})
+                explanation = GroundedExplanationService(_Provider(bundle)).explain_many("我重視朋友", results)[1]
+                self.assertEqual(explanation.provider, "local")
+                self.assertNotIn("ＩＮＦＰ", explanation.text)
+
     def test_local_fallback_ignores_unindexed_descriptions_and_old_weights(self):
         self.results[0]["desc"] = "未索引秘密：能看穿未來並瞬間移動。"
         self.results[0]["analysis_text"] = "未索引秘密：會偷取金幣。"
