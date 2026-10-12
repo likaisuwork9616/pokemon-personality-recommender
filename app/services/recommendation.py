@@ -34,7 +34,8 @@ class HybridRecommendationEngine:
         mbti_scorer: MbtiScorer | None = None,
         explanation_service: GroundedExplanationService | None = None,
         profile_records_loader: Callable[[], list[dict[str, object]]] | None = None,
-        personality_revision: int | None = None,
+        mbti_provider: Any | None = None,
+        embedding_model_key: tuple | None = None,
         reranker: CrossEncoderReranker | None = None,
         database_readiness_probe: Any | None = None,
         personality_trait_codes: tuple[str, ...] | None = None,
@@ -50,12 +51,14 @@ class HybridRecommendationEngine:
         self._encode_lock = Lock()
         self._profile_refresh_lock = Lock()
         self._profile_records_loader = profile_records_loader
-        self._personality_revision = personality_revision
-        self._personality_refresh_error: str | None = None
+        self.mbti_provider = mbti_provider
+        self.embedding_model_key = embedding_model_key or (self.embedding_model_id, "unknown", "default", 384, True)
         self.reranker = reranker
         self.database_readiness_probe = database_readiness_probe
         self.personality_trait_codes = personality_trait_codes
 
+        if mbti_scorer is None and mbti_provider is not None:
+            mbti_scorer = mbti_provider.scorer(profile_engine.st_model, self.embedding_model_key, self._encode_lock)
         if mbti_scorer is None:
             if mbti_catalog is None:
                 from app.services.mbti_catalog import get_mbti_catalog
@@ -98,7 +101,7 @@ class HybridRecommendationEngine:
     def personality_refresh_healthy(self) -> bool:
         """The bundled catalog is validated once; no database vocabulary refresh."""
 
-        return True
+        return self.mbti_provider is None or self.mbti_provider.refresh_healthy
 
     def _selected_mbti(self, value: str | None) -> str | None:
         from app.services.mbti_catalog import normalize_mbti
@@ -146,7 +149,12 @@ class HybridRecommendationEngine:
         if not 1 <= top_k <= 10:
             raise ValueError("top_k 必須介於 1 到 10。")
         selected_mbti = self._selected_mbti(mbti)
-        scorer = self.mbti_scorer
+        try:
+            scorer = (self.mbti_provider.scorer(self.profile_engine.st_model, self.embedding_model_key, self._encode_lock)
+                      if self.mbti_provider is not None else self.mbti_scorer)
+        except Exception:
+            raise RetrievalUnavailableError("MBTI catalog is temporarily unavailable") from None
+        catalog = scorer.catalog
         profile_engine, row_indexes = self._profile_state
         try:
             with self._encode_lock:
@@ -171,10 +179,10 @@ class HybridRecommendationEngine:
                 mbti_candidates = []
                 selected_profile = None
                 if selected_mbti is not None:
-                    selected_profile = self.mbti_catalog.profile_for(selected_mbti)
+                    selected_profile = catalog.profile_for(selected_mbti)
                     mbti_candidates = retriever.retrieve(
                         query_text=selected_profile.matching_text,
-                        query_vector=scorer.prototype_vectors[self.mbti_catalog.codes.index(selected_mbti)].tolist(),
+                        query_vector=scorer.prototype_vectors[catalog.codes.index(selected_mbti)].tolist(),
                         embedding_model_id=self.embedding_model_id, pokemon_limit=50,
                     )
                 candidates = self._union_candidates(text_candidates, mbti_candidates)

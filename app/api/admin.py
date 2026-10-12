@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.catalog import _catalog_item, _images, _localized_profile
@@ -33,7 +33,7 @@ from app.schemas.admin import (
     AdminSessionResponse,
 )
 from app.schemas.catalog import CatalogDescription, CatalogImage, CatalogStats
-from app.schemas.personality import PublicPersonalityCatalog
+from app.schemas.personality import PublicPersonalityCatalog, AdminMbtiProfileUpdate
 from app.services.admin_auth import (
     AdminAuth,
     AdminDisabledError,
@@ -715,3 +715,41 @@ def restore_pokemon(
     _commit(repository)
     _refresh_runtime_profiles(request)
     return _detail(pokemon)
+
+
+@router.put("/mbti/profiles/{code}", response_model=PublicPersonalityCatalog)
+def update_mbti_profile(
+    code: str,
+    payload: AdminMbtiProfileUpdate,
+    request: Request,
+    admin_session: Annotated[AdminSession, Depends(require_editor)],
+    session: Annotated[Session, Depends(get_session)],
+):
+    from urllib.parse import urlsplit
+    from app.repositories.mbti_catalog import MbtiCatalogRepository, CatalogConflict
+    # Browser fetch includes Origin; reject missing, opaque, and cross-origin writes.
+    origin = request.headers.get("origin", "")
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        raise HTTPException(403, detail={"code": "invalid_origin", "message": "來源網址無效。"}) from None
+    if (parsed.scheme, parsed.netloc) != (request.url.scheme, request.url.netloc) or parsed.path or parsed.query or parsed.fragment:
+        raise HTTPException(403, detail={"code": "invalid_origin", "message": "請從同一網站的管理後台儲存。"})
+    provider = getattr(request.app.state, "mbti_provider", None)
+    if provider is None or provider.source != "database":
+        raise HTTPException(409, detail={"code": "mbti_catalog_read_only", "message": "請先啟用 database 資料來源。"})
+    try:
+        catalog = MbtiCatalogRepository(session).update_profile(code, payload.profile.model_dump(), payload.expected_revision)
+        _record_audit(AdminAuditRepository(session), request, admin_session,
+            action="mbti.profile.update", resource_type="mbti_profile", resource_id=code)
+        session.commit()
+        return public_mbti_catalog(catalog)
+    except CatalogConflict:
+        session.rollback()
+        raise HTTPException(409, detail={"code": "mbti_revision_conflict", "message": "資料已更新，請重新載入後儲存。"}) from None
+    except (ValueError, RuntimeError, IntegrityError):
+        session.rollback()
+        raise HTTPException(422, detail={"code": "invalid_mbti_profile", "message": "MBTI 資料驗證失敗，請檢查完整描述、日期、來源與關鍵詞。"}) from None
+    except SQLAlchemyError:
+        session.rollback()
+        raise HTTPException(503, detail={"code": "mbti_catalog_unavailable", "message": "MBTI 資料庫暫時無法使用。"}) from None

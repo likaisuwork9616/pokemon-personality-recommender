@@ -1,0 +1,206 @@
+{
+  "generated_at": "2026-10-12T21:38:25.531981+08:00",
+  "dataset_sha256": "6861366ac4553be789d1dde15464fe2ff7a1dbc129fa281d77f918d80344f981",
+  "seed_sha256": "1d4c2bea4dd037b2d18f49dc602f8ba58884bd88a1fea18618ef002b8e28dd20",
+  "model": [
+    1,
+    "paraphrase-multilingual-MiniLM-L12-v2",
+    "default",
+    384,
+    true
+  ],
+  "cases": 20,
+  "catalog_hash": "6615f89652d0dcda3ac39c321ba9b94dde834a59777f4910ea58262fde112c42",
+  "catalog_revision": 1,
+  "same_catalog_hash": true,
+  "metrics": {
+    "bundled": {
+      "retrieval_recall_at_k": 0.09,
+      "retrieval_high_relevance_recall_at_k": 0.1,
+      "retrieval_mrr_at_k": 0.158333,
+      "retrieval_ndcg_at_k": 0.097038,
+      "recommendation_hit_rate_at_3": 0.3,
+      "recommendation_precision_at_3": 0.1,
+      "recommendation_weighted_precision_at_3": 0.088889,
+      "recommendation_mrr_at_3": 0.158333
+    },
+    "database": {
+      "retrieval_recall_at_k": 0.09,
+      "retrieval_high_relevance_recall_at_k": 0.1,
+      "retrieval_mrr_at_k": 0.158333,
+      "retrieval_ndcg_at_k": 0.097038,
+      "recommendation_hit_rate_at_3": 0.3,
+      "recommendation_precision_at_3": 0.1,
+      "recommendation_weighted_precision_at_3": 0.088889,
+      "recommendation_mrr_at_3": 0.158333
+    }
+  },
+  "same_metrics": true,
+  "variants": [
+    {
+      "case": "text_only",
+      "top3": [
+        628,
+        394,
+        971
+      ],
+      "names": [
+        "勇士雄鷹",
+        "波皇子",
+        "墓仔狗"
+      ],
+      "same_sources": true,
+      "stable": true,
+      "top1_evidence": [
+        {
+          "document_id": "42fafcb5-e9b3-5b30-9b2c-0dc1d85084f0",
+          "chunk_id": "edf12f92-154e-5d94-9095-324c7f8adb30",
+          "content_hash": "7458799ac0c8c5b809898da8e1f2fd8affd91a70e4ce9196b4a4f895b0ea7110",
+          "text": "They fight for their friends without any thought about danger to themselves. One can carry a car while flying."
+        }
+      ]
+    },
+    {
+      "case": "same_type_quiet",
+      "top3": [
+        897,
+        199,
+        394
+      ],
+      "names": [
+        "靈幽馬",
+        "呆呆王",
+        "波皇子"
+      ],
+      "same_sources": true,
+      "stable": true,
+      "top1_evidence": [
+        {
+          "document_id": "1533b153-c63b-5f77-adf2-92628eec8736",
+          "chunk_id": "2aeb365b-557d-5791-a046-eda4371d99b7",
+          "content_hash": "c10828ff223351467daadc6abf22c7313b8fb9f7788043daf5e140f403fccc16",
+          "text": "靈幽馬是通體漆黑的馬類寶可夢。 它有著深紫色的鬃毛和淺紫色的尾巴。 後肢附有如靈魂般的飄霧。 靈幽馬喜歡孤獨與寂靜，喜歡靜謐的環境，會在能使自身能量變強的夜晚活動。 靈幽馬的視覺雖然因此退化了，但是除此之外的五感，如聽覺、嗅覺都變得異常敏銳，使用視覺以外的五感探索周圍的情況，正確把握地形及生物的位置。 它以生物散發在空氣中的生命能量為食。 據說如果被它踢到，就會靈魂出竅。 因此靈幽馬並不會積極地去干涉其他生物。 但是會對打破靜寂、侵入自己領地的對手發起攻擊，並將其趕出領地。 "
+        },
+        {
+          "document_id": "0b00b1ae-4883-5c36-b909-88555bde772c",
+          "chunk_id": "0c9f71ad-ff7c-5b19-831d-43d0a7583b96",
+          "content_hash": "5df4ce12926e0ab60e690a55f1274c78f3854af513068620237455816d11bacb",
+          "text": "中文圖鑑描述：靈幽馬是通體漆黑的馬類寶可夢。 它有著深紫色的鬃毛和淺紫色的尾巴。 後肢附有如靈魂般的飄霧。 靈幽馬喜歡孤獨與寂靜，喜歡靜謐的環境，會在能使自身能量變強的夜晚活動。 靈幽馬的視覺雖然因此退化了，但是除此之外的五感，如聽覺、嗅覺都變得異常敏銳，使用視覺以外的五感探索周圍的情況，正確把握地形及生物的位置。 它以生物散發在空氣中的生命能量為食。 據說如果被它踢到，就會靈魂出竅。 因此靈幽馬並不會積極地去干涉其他生物。 但是會對打破靜寂、侵入自己領地的對手發起攻擊，並將"
+        },
+        {
+          "document_id": "0b00b1ae-4883-5c36-b909-88555bde772c",
+          "chunk_id": "ea26dd98-9784-56dd-8716-a298df6990a5",
+          "content_hash": "9222c73037ab8a8abb96ec53c5d62c64bdbdd302d848de3c44c1fd885376f06a",
+          "text": "了因此現身的蕾冠王後，它們與蕾冠王建立了深厚的牽絆，成為了它的愛馬。 靈幽馬在和蕾冠王分別後，就一直居住在王冠神殿。 喜歡食用一種生長於光線暗淡的田地的農作物。 英文 flavor text：It probes its surroundings with all its senses save one—it doesn’t use its sense of sight. Spectrier’s kicks are said to separate soul from body"
+        }
+      ]
+    },
+    {
+      "case": "same_type_social",
+      "top3": [
+        765,
+        97,
+        766
+      ],
+      "names": [
+        "智揮猩",
+        "引夢貘人",
+        "投擲猴"
+      ],
+      "same_sources": true,
+      "stable": true,
+      "top1_evidence": [
+        {
+          "document_id": "c55c286c-f4d6-54b3-8020-876baf263b43",
+          "chunk_id": "54633163-9093-5511-a137-3dc3c5bcd5d5",
+          "content_hash": "18c33a6adb4259ad779d0e951bc40839acb581014a3d20b660fc26f93bf3c512",
+          "text": "不起沒經驗的訓練家，是面向資深訓練家的寶可夢。 它有時會擅用人類的道具，對於訓練家來說是擁有難相處的一面的寶可夢。 據說還有人見過它隨意投擲精靈球，命令寶可夢。 英文 flavor text：Known for its extreme intelligence, this Pokémon will look down on inexperienced Trainers, so it’s best suited to veteran Trainers."
+        },
+        {
+          "document_id": "3c6b229d-8969-56eb-a252-ffac5c78c65d",
+          "chunk_id": "1985934b-3623-5f5e-8a13-9ed37ad84792",
+          "content_hash": "f5e8bdcb60658e98c47ef0064dee0bf831db2f8d8f6eeb23daa13f2719bf59d2",
+          "text": "Known for its extreme intelligence, this Pokémon will look down on inexperienced Trainers, so it’s best suited to veteran Trainers."
+        }
+      ]
+    },
+    {
+      "case": "same_text_other_type",
+      "top3": [
+        199,
+        394,
+        178
+      ],
+      "names": [
+        "呆呆王",
+        "波皇子",
+        "天然鳥"
+      ],
+      "same_sources": true,
+      "stable": true,
+      "top1_evidence": [
+        {
+          "document_id": "c1b3889d-a3b0-5fc8-bbcb-0fe476b85d8d",
+          "chunk_id": "971958e7-c776-5e41-b6e7-6c5c7e246447",
+          "content_hash": "34e835d987f4a8e7fadffe3b94e1360b4a4a3c13b5c53fdd534f554fb8de7df3",
+          "text": "容到底是什麼，目前還沒有人能夠給出答案。 英文 flavor text：It has incredible intellect and in­ tuition. Whatever the situation, it remains calm and collected."
+        },
+        {
+          "document_id": "bb4589d0-d300-5fce-bc9c-553f2582762f",
+          "chunk_id": "4d9ef99e-e95b-584f-a991-21685f62d5c1",
+          "content_hash": "8c70b27c28f3e3ddffbea1ff5c7ec3aed0fe003f492ffd918b37e7ad151af9b2",
+          "text": "在為解開世界上的謎團進行著研究，但把頭上的大舌貝摘掉後，好像就會把研究成果忘得一乾二淨。 呆呆王被稱為大海的賢者。 不論何時它都會不慌不忙，一副悠然自得的樣子。 也有地區流傳著「迷路就問呆呆王」的俗語，可見它因聰明而廣為人知。 雖然無論向呆呆王提出什麼難題它都會幫忙解決，但是誰都無法理解它的語言。 它也會去和智揮猩比拼智力，但結果多是不分上下。 被大舌貝咬所產生的刺激，使伽勒爾地區的呆呆獸腦內分泌的化學物質與體內的香料發生了變質，於是進化成了毒屬性的呆呆王。 受到進化的衝擊和"
+        },
+        {
+          "document_id": "c1b3889d-a3b0-5fc8-bbcb-0fe476b85d8d",
+          "chunk_id": "5b68ac23-b8e3-5861-a1fd-5b0d84896563",
+          "content_hash": "9c97be8d0a47204c329ae6cb57a6906df865e2c2c125dd058b49592947d6b6fa",
+          "text": "在為解開世界上的謎團進行著研究，但把頭上的大舌貝摘掉後，好像就會把研究成果忘得一乾二淨。 呆呆王被稱為大海的賢者。 不論何時它都會不慌不忙，一副悠然自得的樣子。 也有地區流傳著「迷路就問呆呆王」的俗語，可見它因聰明而廣為人知。 雖然無論向呆呆王提出什麼難題它都會幫忙解決，但是誰都無法理解它的語言。 它也會去和智揮猩比拼智力，但結果多是不分上下。 被大舌貝咬所產生的刺激，使伽勒爾地區的呆呆獸腦內分泌的化學物質與體內的香料發生了變質，於是進化成了毒屬性的呆呆王。 受到進化的衝擊和"
+        }
+      ]
+    },
+    {
+      "case": "conflicting_type",
+      "top3": [
+        199,
+        394,
+        178
+      ],
+      "names": [
+        "呆呆王",
+        "波皇子",
+        "天然鳥"
+      ],
+      "same_sources": true,
+      "stable": true,
+      "top1_evidence": [
+        {
+          "document_id": "c1b3889d-a3b0-5fc8-bbcb-0fe476b85d8d",
+          "chunk_id": "971958e7-c776-5e41-b6e7-6c5c7e246447",
+          "content_hash": "34e835d987f4a8e7fadffe3b94e1360b4a4a3c13b5c53fdd534f554fb8de7df3",
+          "text": "容到底是什麼，目前還沒有人能夠給出答案。 英文 flavor text：It has incredible intellect and in­ tuition. Whatever the situation, it remains calm and collected."
+        },
+        {
+          "document_id": "bb4589d0-d300-5fce-bc9c-553f2582762f",
+          "chunk_id": "4d9ef99e-e95b-584f-a991-21685f62d5c1",
+          "content_hash": "8c70b27c28f3e3ddffbea1ff5c7ec3aed0fe003f492ffd918b37e7ad151af9b2",
+          "text": "在為解開世界上的謎團進行著研究，但把頭上的大舌貝摘掉後，好像就會把研究成果忘得一乾二淨。 呆呆王被稱為大海的賢者。 不論何時它都會不慌不忙，一副悠然自得的樣子。 也有地區流傳著「迷路就問呆呆王」的俗語，可見它因聰明而廣為人知。 雖然無論向呆呆王提出什麼難題它都會幫忙解決，但是誰都無法理解它的語言。 它也會去和智揮猩比拼智力，但結果多是不分上下。 被大舌貝咬所產生的刺激，使伽勒爾地區的呆呆獸腦內分泌的化學物質與體內的香料發生了變質，於是進化成了毒屬性的呆呆王。 受到進化的衝擊和"
+        },
+        {
+          "document_id": "c1b3889d-a3b0-5fc8-bbcb-0fe476b85d8d",
+          "chunk_id": "5b68ac23-b8e3-5861-a1fd-5b0d84896563",
+          "content_hash": "9c97be8d0a47204c329ae6cb57a6906df865e2c2c125dd058b49592947d6b6fa",
+          "text": "在為解開世界上的謎團進行著研究，但把頭上的大舌貝摘掉後，好像就會把研究成果忘得一乾二淨。 呆呆王被稱為大海的賢者。 不論何時它都會不慌不忙，一副悠然自得的樣子。 也有地區流傳著「迷路就問呆呆王」的俗語，可見它因聰明而廣為人知。 雖然無論向呆呆王提出什麼難題它都會幫忙解決，但是誰都無法理解它的語言。 它也會去和智揮猩比拼智力，但結果多是不分上下。 被大舌貝咬所產生的刺激，使伽勒爾地區的呆呆獸腦內分泌的化學物質與體內的香料發生了變質，於是進化成了毒屬性的呆呆王。 受到進化的衝擊和"
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "active_pokemon": 1025,
+    "ready_pokemon": 1025,
+    "pending_or_hash_mismatch_chunks": 0,
+    "ready_vectors": 4684,
+    "migration": "20261012_0011"
+  },
+  "evidence_lineage_verified": true
+}

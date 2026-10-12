@@ -42,6 +42,13 @@ class PublicPersonalityApiTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"]["code"], "personality_catalog_unavailable")
         self.assertNotIn("PRIVATE-FAILURE", response.text)
 
+    def test_sql_failure_returns_sanitized_unavailable_response(self):
+        from sqlalchemy.exc import OperationalError
+        with patch("app.api.personality.get_mbti_catalog",side_effect=OperationalError("PRIVATE-SQL",{},Exception("PRIVATE-CREDENTIAL"))):
+            response=self.client.get("/api/v1/personality/traits")
+        self.assertEqual(response.status_code,503)
+        self.assertNotIn("PRIVATE",response.text)
+
     def test_main_application_exposes_public_route(self):
         self.assertIn("/api/v1/personality/traits", create_app(lambda: object()).openapi()["paths"])
 

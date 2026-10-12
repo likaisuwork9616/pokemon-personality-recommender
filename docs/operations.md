@@ -367,3 +367,7 @@ python scripts/evaluate_cross_encoder.py \
 ~~~
 
 程式只有在 graded nDCG 達到最低改善且額外 p95 未超過預算時才回傳 `0`。版本化 CPU 報表的結果為 nDCG `0.095655 → 0.095588`（`-0.000067`），額外 p95 `993.1806 ms`，兩項門檻皆未通過，因此 `CROSS_ENCODER_ENABLED` 保持 `false`。延遲預算是在推論完成後決定是否採用結果，不能回收已花費的推論時間；正式啟用前應改用更小模型、量化、GPU 或獨立 inference service 重新測量。
+
+## MBTI SQL 資料來源
+
+`MBTI_CATALOG_SOURCE` 預設 `bundled`；設定 `database` 前需顯式 migration、初始化與完整性驗證。新後台可編輯 SQL 介紹，舊人格寫入 API 仍停用。命令、權限、版本刷新與回退見 [MBTI SQL 操作](mbti-database.md)。

@@ -27,7 +27,7 @@ def _catalog():
         matching_text=f"詳細行為摘要{index} 理解資訊 決策方式 互動方式 行動方式",
         weighted_terms=(SimpleNamespace(term="安靜" if index == 0 else f"特質{index}", weight=2.0),),
     ) for index, code in enumerate(codes))
-    return SimpleNamespace(codes=codes, profiles=profiles, profile_for=lambda code: profiles[codes.index(code)])
+    return SimpleNamespace(revision=1, content_hash="a"*64, codes=codes, profiles=profiles, profile_for=lambda code: profiles[codes.index(code)])
 
 
 class _Encoder:
@@ -297,7 +297,7 @@ class HybridRecommendationEngineTests(unittest.TestCase):
         ):
             pokemon.return_value.metadata_records.return_value = _records()
             vectors.return_value.active_model.return_value = SimpleNamespace(
-                id=9, model_name=DEFAULT_MODEL_NAME, model_version="default", normalize_embeddings=True,
+                id=9, model_name=DEFAULT_MODEL_NAME, model_version="default", dimensions=384, normalize_embeddings=True,
             )
             vectors.return_value.ready_pokemon_count.return_value = 3
             engine = _default_engine_factory()

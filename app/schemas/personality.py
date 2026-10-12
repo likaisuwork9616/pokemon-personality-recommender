@@ -37,5 +37,11 @@ class PublicPersonalityCatalog(BaseModel):
     revision: int = Field(gt=0)
     traits: list[PublicPersonalityTrait] = Field(min_length=16, max_length=16)
     catalog_version: str = Field(min_length=1, max_length=40)
-    source: Literal["bundled"] = "bundled"
+    source: Literal["bundled", "database"] = "bundled"
     reviewed_at: str
+
+
+class AdminMbtiProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(gt=0)
+    profile: PublicPersonalityTrait

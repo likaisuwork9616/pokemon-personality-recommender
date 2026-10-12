@@ -23,7 +23,7 @@
 - **可追溯解說**：每個結果保留 evidence lineage；外部模型只能整理已選出的證據，不能改排名。
 - **今日寶可夢**：依台北時間、國農曆、節氣、時辰與星座產生可重現的娛樂性每日匹配。
 - **完整圖鑑**：提供繁中搜尋、分頁、屬性、世代與特殊分類篩選。
-- **可維護後台**：支援 `viewer / editor / admin`、Audit Log、唯讀十六型 MBTI 詳細介紹與安全 reindex。
+- **可維護後台**：支援 `viewer / editor / admin`、Audit Log、十六型 MBTI 詳細介紹、SQL 編輯與安全 reindex。
 - **可正式營運**：包含 PostgreSQL backup／restore、Prometheus、Grafana、Alertmanager、Caddy HTTPS、rate limit 與 immutable image rollback。
 
 推薦排序與文字生成彼此分離。即使沒有 Gemini／OpenAI key，Top 3、圖鑑證據與本機繁中契合分析仍可使用。
@@ -170,7 +170,7 @@ flowchart LR
 4. 以固定 tie-break 產生 Top 3；只有 Top 1 進入解說流程。
 5. Gemini、OpenAI 或本機 fallback 都只能引用該結果的 evidence，不能改排名與分數。
 
-`mbti` 可省略、留空或填 `null`；`INFP-T`／`INFP-A` 會正規化為 `INFP`，A／T 不參與計分。內建資料位於 `app/data/mbti_zh_hant.json`，不判定使用者或寶可夢的 MBTI。研究來源見 [MBTI 研究](docs/mbti-research.md)，資料庫接續清單見 [SQL 代辦清單](sql代辦清單.md)。
+`mbti` 可省略、留空或填 `null`；`INFP-T`／`INFP-A` 會正規化為 `INFP`，A／T 不參與計分。預設內建資料位於 `app/data/mbti_zh_hant.json`；亦可切換已初始化的 SQL 來源並由後台編輯，見 [MBTI SQL 操作](docs/mbti-database.md)。不判定使用者或寶可夢的 MBTI。研究來源見 [MBTI 研究](docs/mbti-research.md)，資料庫接續清單見 [SQL 代辦清單](sql代辦清單.md)。
 
 完整資料流、分數公式、今日寶可夢與 reindex 設計見[系統架構與推薦流程](docs/architecture.md)。
 

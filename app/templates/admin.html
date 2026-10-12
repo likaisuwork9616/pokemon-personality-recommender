@@ -6,7 +6,7 @@
   <meta name="description" content="管理寶可夢圖鑑資料、啟用狀態與檢索來源。">
   <title>{{ page_title }}</title>
   <link rel="stylesheet" href="/static/css/app.css?v=20261012-mbti1">
-  <script src="/static/js/admin.js?v=20261012-mbti1" defer></script>
+  <script src="/static/js/admin.js?v=20261012-sql1" defer></script>
 </head>
 <body data-page="admin" data-theme="pokedex">
   <a class="skip-link" href="#admin-main">跳到管理內容</a>
@@ -110,7 +110,7 @@
         <div class="panel-heading">
           <div>
             <p class="eyebrow">MBTI REFERENCE</p>
-            <h2 id="admin-mbti-title">16 型 MBTI 詳細介紹（唯讀）</h2>
+            <h2 id="admin-mbti-title">16 型 MBTI 詳細介紹</h2>
           </div>
           <button id="admin-mbti-reload" class="button button-ghost" type="button">重新載入介紹</button>
         </div>
@@ -119,7 +119,7 @@
         <label class="field"><span>選擇 MBTI 類型</span><select id="admin-mbti-select" disabled aria-controls="admin-mbti-details"></select></label>
         <p id="admin-mbti-status" class="status-line" role="status" aria-live="polite"></p>
         <article id="admin-mbti-details" aria-live="polite"></article>
-        <h3>配對行為詞（唯讀）</h3>
+        <h3>配對行為詞</h3>
         <div class="vocabulary-table-wrap">
           <table class="vocabulary-table">
             <caption>本站娛樂配對使用的相對權重，不是官方 MBTI 測評分數。</caption>
@@ -129,6 +129,13 @@
         </div>
         <h3>參考來源</h3>
         <ul id="admin-mbti-sources"></ul>
+        <p id="admin-mbti-edit-note" class="muted"></p>
+        <form id="admin-mbti-editor" hidden>
+          <div id="admin-mbti-fields" class="mbti-detail-grid"></div>
+          <div class="editor-actions">
+            <button id="admin-mbti-save" class="button button-primary" type="submit">儲存 MBTI 介紹</button>
+          </div>
+        </form>
       </section>
 
       <section class="card evaluation-panel" aria-labelledby="evaluation-title">
