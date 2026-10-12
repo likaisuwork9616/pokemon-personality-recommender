@@ -18,13 +18,13 @@ class AdminMbtiReferenceContractTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-    def test_mbti_reference_has_selection_loading_retry_and_no_editing_form(self):
+    def test_mbti_reference_has_selection_loading_retry_and_versioned_editor(self):
         for element in (
             "admin-mbti-select", "admin-mbti-reload", "admin-mbti-status",
             "admin-mbti-details", "admin-mbti-terms", "admin-mbti-sources",
         ):
             self.assertIn(f'id="{element}"', self.template)
-        self.assertIn("16 型 MBTI 詳細介紹（唯讀）", self.template)
+        self.assertIn("16 型 MBTI 詳細介紹", self.template)
         self.assertIn("本站不提供正式 MBTI 測評", self.template)
         self.assertIn("不是官方 MBTI 測評分數", self.template)
         self.assertIn("共 16 型", self.script)
@@ -34,6 +34,10 @@ class AdminMbtiReferenceContractTests(unittest.TestCase):
         self.assertNotIn('id="vocabulary-synonym-form"', self.template)
         self.assertNotIn("儲存特質名稱", self.template)
         self.assertNotIn("加入同義詞", self.template)
+        self.assertIn('id="admin-mbti-editor" hidden', self.template)
+        self.assertIn("state.canWrite && state.mbtiSource === \"database\"", self.script)
+        self.assertIn("expected_revision: state.mbtiRevision", self.script)
+        self.assertIn('method: "PUT"', self.script)
 
     def test_reference_renders_all_prose_terms_sources_and_version(self):
         for field in (

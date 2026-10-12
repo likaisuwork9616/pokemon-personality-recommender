@@ -42,6 +42,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg://pokemon_ci:pokemon_ci@127.0.0.1:5432/pokemon_ci
       TEST_DATABASE_URL: postgresql+psycopg://pokemon_ci:pokemon_ci@127.0.0.1:5432/pokemon_ci
       PYTHONUTF8: "1"
+      MBTI_CATALOG_SOURCE: bundled
 
     steps:
       - name: Check out repository

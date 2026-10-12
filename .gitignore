@@ -48,3 +48,6 @@ pk_pic/
 # Local development blueprints
 /寶可夢人格推薦系統_延伸開發藍圖_RAG版.md
 /寶可夢人格推薦系統_延伸開發藍圖_RAG版.html
+
+# Isolated local database and backups
+.local/

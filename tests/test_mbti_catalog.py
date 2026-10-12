@@ -81,7 +81,7 @@ class MbtiCatalogTests(unittest.TestCase):
         for excluded in (*profile.blind_spots, profile.stress_pattern, *profile.growth_tips):
             self.assertNotIn(excluded, profile.matching_text)
 
-    def test_hash_ignores_object_key_order_but_detects_content_and_revision(self):
+    def test_content_hash_ignores_revision_and_key_order_but_detects_edits(self):
         original = mbti_catalog._catalog_from_payload(self.payload)
         reordered = dict(reversed(list(self.payload.items())))
 
@@ -91,7 +91,7 @@ class MbtiCatalogTests(unittest.TestCase):
         self.assertNotEqual(original.content_hash, mbti_catalog._catalog_from_payload(changed).content_hash)
         changed = copy.deepcopy(self.payload)
         changed["revision"] += 1
-        self.assertNotEqual(original.content_hash, mbti_catalog._catalog_from_payload(changed).content_hash)
+        self.assertEqual(original.content_hash, mbti_catalog._catalog_from_payload(changed).content_hash)
 
     def test_missing_invalid_or_reordered_type_fails_before_use(self):
         variants = []
@@ -154,7 +154,7 @@ class MbtiCatalogTests(unittest.TestCase):
         payload["profiles"][0]["weighted_terms"][0]["term"] = "行" * 80
         accepted = mbti_catalog._catalog_from_payload(payload)
         self.assertEqual(len(accepted.profiles[0].name_zh), 40)
-        self.assertEqual(len(accepted.profiles[0].weighted_terms[0].term), 80)
+        self.assertIn(payload["profiles"][0]["weighted_terms"][0]["term"], [term.term for term in accepted.profiles[0].weighted_terms])
 
         invalid = copy.deepcopy(self.payload)
         invalid["profiles"][0]["name_zh"] = "人" * 41

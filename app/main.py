@@ -26,6 +26,7 @@ from app.services.rate_limit import (
     RecommendationRateLimitConfig,
 )
 from app.services.recommendation import HybridRecommendationEngine
+from app.services.mbti_provider import configured_mbti_provider
 from app.services.observability import RequestMetrics
 from app.services.reranking import CrossEncoderConfig, CrossEncoderReranker
 from app.services.readiness import DatabaseReadinessProbe, ReadinessConfig
@@ -46,7 +47,7 @@ def _personality_refresh_healthy(engine: Any) -> bool:
         return False
 
 
-def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> Any:
+def _default_engine_factory(request_metrics: RequestMetrics | None = None, mbti_provider=None) -> Any:
     import pandas as pd
 
     from app.db.session import get_session_factory
@@ -57,6 +58,7 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
     from app.services.personality_profile import PokemonPersonalityProfile
 
     session_factory = get_session_factory()
+    mbti_provider = mbti_provider or configured_mbti_provider(session_factory)
 
     def load_profile_records() -> list[dict[str, object]]:
         with session_factory() as session:
@@ -89,6 +91,8 @@ def _default_engine_factory(request_metrics: RequestMetrics | None = None) -> An
         profile_engine=profile_engine,
         session_factory=session_factory,
         embedding_model_id=active_model.id,
+        mbti_provider=mbti_provider,
+        embedding_model_key=(active_model.id, active_model.model_name, active_model.model_version, active_model.dimensions, active_model.normalize_embeddings),
         explanation_service=GroundedExplanationService.from_env(
             observer=(
                 request_metrics.observe_explanation_provider
@@ -114,10 +118,12 @@ def create_app(
     feedback_service: Any | None = None,
     today_pokemon_service: Any | None = None,
     recommendation_abuse_guard: RecommendationAbuseGuard | None = None,
+    mbti_provider=None,
 ) -> FastAPI:
     using_default_engine = engine_factory is None
     request_metrics = RequestMetrics()
-    factory = engine_factory or (lambda: _default_engine_factory(request_metrics))
+    provider = mbti_provider or configured_mbti_provider()
+    factory = engine_factory or (lambda: _default_engine_factory(request_metrics, provider))
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.feedback_service = feedback_service
@@ -169,6 +175,7 @@ def create_app(
         application.state.feedback_service = None
         application.state.today_pokemon_service = None
     application = FastAPI(title="Pokemon Personality Recommender API", description="以人格、星座曆法、屬性權重與語意證據推薦寶可夢，並產生受證據約束的分析。", version="2.4.0", lifespan=lifespan)
+    application.state.mbti_provider = provider
     application.state.admin_auth = admin_auth or AdminAuth(AdminAuthConfig.from_env())
     application.state.request_metrics = request_metrics
     application.state.readiness_config = readiness_config or ReadinessConfig.from_env()

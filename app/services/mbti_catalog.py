@@ -7,7 +7,7 @@ import json
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -84,6 +84,7 @@ class MbtiCatalog:
     reviewed_at: str
     profiles: tuple[MbtiProfile, ...]
     content_hash: str
+    source: str = "bundled"
 
     @property
     def codes(self) -> tuple[str, ...]:
@@ -156,7 +157,7 @@ def _weighted_terms(value: object, code: str) -> tuple[MbtiWeightedTerm, ...]:
         raise RuntimeError(f"MBTI {code} 的行為關鍵詞必須包含中文。")
     if not any(re.search(r"[A-Za-z]", item.term) for item in terms):
         raise RuntimeError(f"MBTI {code} 的行為關鍵詞必須包含英文。")
-    return tuple(terms)
+    return tuple(sorted(terms, key=lambda item: canonicalize_personality_text(item.term)))
 
 
 def _profile(payload: object) -> MbtiProfile:
@@ -221,7 +222,14 @@ def _catalog_from_payload(payload: object) -> MbtiCatalog:
         raise RuntimeError("MBTI 資料必須完整包含標準的 16 種人格。")
     if codes != MBTI_CODES:
         raise RuntimeError("MBTI 人格必須依代碼字母順序排列。")
-    canonical_json = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    canonical = {"version": version, "reviewed_at": reviewed_at, "profiles": []}
+    for profile in profiles:
+        row = asdict(profile)
+        row["weighted_terms"] = sorted(row["weighted_terms"], key=lambda item: canonicalize_personality_text(item["term"]))
+        for term in row["weighted_terms"]:
+            term["weight"] = float(term["weight"])
+        canonical["profiles"].append(row)
+    canonical_json = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return MbtiCatalog(
         version=version,
         revision=revision,

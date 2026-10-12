@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from uuid import UUID
 
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Date,
     Double,
     Computed,
     ForeignKey,
@@ -28,7 +29,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import TSVECTOR, JSONB
 from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
@@ -1130,3 +1131,64 @@ class PokemonReindexJob(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
     pokemon: Mapped[Pokemon] = relationship(back_populates="reindex_jobs")
+
+
+class MbtiProfileRow(Base):
+    __tablename__ = "mbti_profiles"
+    __table_args__ = (
+        CheckConstraint("code IN ('ENFJ','ENFP','ENTJ','ENTP','ESFJ','ESFP','ESTJ','ESTP','INFJ','INFP','INTJ','INTP','ISFJ','ISFP','ISTJ','ISTP')", name="valid_code"),
+        *(CheckConstraint(f"length(trim({field})) > 0", name=f"{field}_not_blank") for field in (
+            "name_zh", "summary", "information_style", "decision_style", "interaction_style", "action_style", "stress_pattern")),
+        *(CheckConstraint(f"jsonb_typeof({field}) = 'array' AND jsonb_array_length({field}) > 0", name=f"{field}_array") for field in (
+            "strengths", "blind_spots", "growth_tips", "source_urls")),
+    )
+    code: Mapped[str] = mapped_column(String(4), primary_key=True)
+    name_zh: Mapped[str] = mapped_column(String(40), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    information_style: Mapped[str] = mapped_column(Text, nullable=False)
+    decision_style: Mapped[str] = mapped_column(Text, nullable=False)
+    interaction_style: Mapped[str] = mapped_column(Text, nullable=False)
+    action_style: Mapped[str] = mapped_column(Text, nullable=False)
+    stress_pattern: Mapped[str] = mapped_column(Text, nullable=False)
+    strengths: Mapped[list] = mapped_column(JSONB, nullable=False)
+    blind_spots: Mapped[list] = mapped_column(JSONB, nullable=False)
+    growth_tips: Mapped[list] = mapped_column(JSONB, nullable=False)
+    source_urls: Mapped[list] = mapped_column(JSONB, nullable=False)
+    reviewed_at: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class MbtiWeightedTermRow(Base):
+    __tablename__ = "mbti_weighted_terms"
+    __table_args__ = (
+        UniqueConstraint("profile_code", "normalized_term", name="uq_mbti_terms_normalized"),
+        CheckConstraint("length(trim(term)) > 0 AND length(trim(normalized_term)) > 0", name="term_not_blank"),
+        CheckConstraint("weight > 0 AND weight <= 5 AND weight NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)", name="weight_range"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    profile_code: Mapped[str] = mapped_column(ForeignKey("mbti_profiles.code", ondelete="CASCADE"), nullable=False)
+    term: Mapped[str] = mapped_column(String(80), nullable=False)
+    normalized_term: Mapped[str] = mapped_column(String(80), nullable=False)
+    weight: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class MbtiCatalogState(Base):
+    __tablename__ = "mbti_catalog_state"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="singleton"),
+        CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="valid_hash"),
+        CheckConstraint("length(trim(source_version)) > 0", name="version_not_blank"),
+        CheckConstraint("status IN ('ready', 'editing')", name="valid_status"),
+    )
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewed_at: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    initialized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -11,6 +11,8 @@
     selected: null,
     reindexTimer: null,
     mbtiProfiles: [],
+    mbtiRevision: null,
+    mbtiSource: "bundled",
   };
   const byId = (id) => document.getElementById(id);
   const loginPanel = byId("admin-login-panel");
@@ -375,7 +377,84 @@
     });
     byId("admin-mbti-sources").replaceChildren(...sources);
     byId("admin-mbti-status").textContent = `正在查看 ${profile.code}，共 16 型。`;
+    renderMbtiEditor(profile);
   };
+
+  const mbtiEditFields = [
+    ["name_zh", "中文名稱"], ["summary", "完整摘要"],
+    ["information_style", "資訊處理"], ["decision_style", "決策風格"],
+    ["interaction_style", "互動方式"], ["action_style", "行動節奏"],
+    ["strengths", "優勢（每行一項）"], ["blind_spots", "盲點（每行一項）"],
+    ["stress_pattern", "壓力傾向"], ["growth_tips", "成長建議（每行一項）"],
+    ["source_urls", "HTTPS 研究來源（每行一個網址）"],
+    ["reviewed_at", "查證日期"], ["weighted_terms", "行為詞與權重（每行：詞 | 權重）"],
+  ];
+  const mbtiListFields = new Set(["strengths", "blind_spots", "growth_tips", "source_urls"]);
+
+  const renderMbtiEditor = (profile) => {
+    const enabled = state.canWrite && state.mbtiSource === "database";
+    byId("admin-mbti-editor").hidden = !enabled;
+    byId("admin-mbti-edit-note").textContent = state.mbtiSource !== "database"
+      ? "目前使用內建介紹；啟用資料庫來源後可由編輯者修改。"
+      : enabled ? "儲存會發布完整新版介紹。若他人先儲存，請重新載入後再編輯。" : "目前帳號僅可檢視介紹。";
+    const fields = byId("admin-mbti-fields");
+    fields.replaceChildren();
+    if (!enabled) return;
+    mbtiEditFields.forEach(([key, label]) => {
+      const wrapper = document.createElement("label");
+      wrapper.className = "field";
+      const caption = document.createElement("span");
+      caption.textContent = label;
+      const input = document.createElement(key === "reviewed_at" ? "input" : "textarea");
+      input.name = key;
+      input.required = true;
+      if (key === "reviewed_at") input.type = "date";
+      else input.rows = key === "weighted_terms" ? 10 : 4;
+      if (key === "name_zh") input.maxLength = 40;
+      input.value = key === "weighted_terms"
+        ? profile[key].map((item) => `${item.term} | ${item.weight}`).join("\n")
+        : Array.isArray(profile[key]) ? profile[key].join("\n") : profile[key];
+      wrapper.append(caption, input);
+      fields.append(wrapper);
+    });
+  };
+
+  byId("admin-mbti-editor").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const profile = state.mbtiProfiles.find((item) => item.code === byId("admin-mbti-select").value);
+    if (!profile || !state.canWrite || state.mbtiSource !== "database") return;
+    const updated = { ...profile };
+    const lines = (value) => value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    try {
+      for (const [key] of mbtiEditFields) {
+        const value = event.currentTarget.elements.namedItem(key).value.trim();
+        if (key === "weighted_terms") {
+          updated[key] = lines(value).map((line) => {
+            const parts = line.split("|");
+            const weight = Number(parts[1]);
+            if (parts.length !== 2 || !parts[0].trim() || !Number.isFinite(weight) || weight <= 0 || weight > 5) {
+              throw new Error("每個行為詞請使用「詞 | 權重」，權重需大於 0 且不超過 5。");
+            }
+            return { term: parts[0].trim(), weight };
+          });
+        } else updated[key] = mbtiListFields.has(key) ? lines(value) : value;
+      }
+      byId("admin-mbti-save").disabled = true;
+      byId("admin-mbti-select").disabled = true;
+      byId("admin-mbti-reload").disabled = true;
+      await api(`/mbti/profiles/${encodeURIComponent(profile.code)}`, {
+        method: "PUT", body: JSON.stringify({ expected_revision: state.mbtiRevision, profile: updated }),
+      });
+      await loadMbtiCatalog();
+      setStatus(`已儲存 ${profile.code}，修訂 ${state.mbtiRevision}。`);
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      byId("admin-mbti-save").disabled = false;
+      byId("admin-mbti-select").disabled = false;
+      byId("admin-mbti-reload").disabled = false;
+    }
+  });
 
   const loadMbtiCatalog = async () => {
     const select = byId("admin-mbti-select");
@@ -390,6 +469,8 @@
         throw new Error("MBTI 介紹資料不完整，請重新載入。");
       }
       state.mbtiProfiles = catalog.traits;
+      state.mbtiRevision = catalog.revision;
+      state.mbtiSource = catalog.source;
       select.replaceChildren(...state.mbtiProfiles.map((profile) => {
         const option = document.createElement("option");
         option.value = profile.code;
@@ -403,6 +484,7 @@
       renderMbtiProfile();
     } catch (error) {
       state.mbtiProfiles = [];
+      byId("admin-mbti-editor").hidden = true;
       select.replaceChildren();
       byId("admin-mbti-details").replaceChildren();
       byId("admin-mbti-terms").replaceChildren();
