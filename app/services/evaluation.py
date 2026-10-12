@@ -8,12 +8,18 @@ from statistics import mean, median
 from time import perf_counter
 from typing import Any, Iterable
 
+from app.services.mbti_catalog import normalize_mbti
+
 
 @dataclass(frozen=True)
 class EvaluationCase:
     case_id: str
     query: str
     relevant_pokedex_numbers: frozenset[int]
+    mbti: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mbti", normalize_mbti(self.mbti))
 
 
 def _reciprocal_rank(ranked: list[int], relevant: frozenset[int]) -> float:
@@ -36,7 +42,7 @@ def evaluate_recommendations(engine: Any, cases: Iterable[EvaluationCase], *, re
         if not case.case_id or not case.query.strip() or not case.relevant_pokedex_numbers:
             raise ValueError("every evaluation case needs an id, query and relevance labels")
         started = perf_counter()
-        results = engine.recommend(case.query, top_k=retrieval_k)
+        results = engine.recommend(case.query, top_k=retrieval_k, mbti=case.mbti)
         latencies.append((perf_counter() - started) * 1000.0)
         ranked = [int(item["pokedex_number"]) for item in results]
         top3 = ranked[:3]

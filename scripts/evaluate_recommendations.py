@@ -26,6 +26,7 @@ def load_cases(path: Path) -> list[EvaluationCase]:
                 case_id=str(payload["id"]),
                 query=str(payload["query"]),
                 relevant_pokedex_numbers=frozenset(int(value) for value in payload["relevant_pokedex_numbers"]),
+                mbti=payload.get("mbti"),
             ))
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"invalid evaluation case at line {line_number}") from exc
