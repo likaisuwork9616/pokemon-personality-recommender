@@ -17,6 +17,12 @@ htmlcov/
 venv/
 env/
 
+# Local runtime data and database backups
+.local/
+*.dump
+*.dump.sha256
+*.bak
+
 .gradio/
 .ipynb_checkpoints/
 old/

@@ -10,6 +10,8 @@ README 只保留專案介紹、快速啟動與常用入口；實作、維運及�
 | --- | --- |
 | 了解推薦、今日寶可夢、RAG 與資料流 | [系統架構與推薦流程](architecture.md) |
 | 在本機啟動、查 log、操作資料庫或執行測試 | [本機操作指南](operations.md) |
+| 使用已建置的 Windows 原生環境與一鍵啟停 | [Windows 本機環境](windows-local.md) |
+| 規劃公開上線，回家接續雲端部署 | [上網部署流程與回家接續](上網部署流程與回家接續.md) |
 | 暫時產生公開網址 | [正式部署文件的 Quick Tunnel 章節](production.md#臨時-cloudflare-quick-tunnel-smoke-test) |
 | 用固定網域正式上線 | [正式環境部署、備份與回退](production.md) |
 | 設定 Prometheus、Alertmanager 與雲端費用護欄 | [費用護欄與主動告警](cost-controls.md) |
